@@ -144,6 +144,25 @@ impl Default for Fixes {
     }
 }
 
+/// Optional Generation.
+#[derive(Default, Debug, Clone, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct Generation {
+    /// An optional prefix to remove from method names before generating Rust identifiers
+    /// from them.
+    #[serde(default)]
+    pub method_name_prefix: Option<String>,
+    /// Whether to generate constants for method names.
+    #[serde(default)]
+    pub method_name_constants: bool,
+    /// Whether to generate type aliases for method result types.
+    #[serde(default)]
+    pub result_types: bool,
+    /// Whether to generate struct types for method parameters.
+    #[serde(default)]
+    pub param_types: bool,
+}
+
 /// The configuration file of `openrpc-gen`. Should be parsed from a TOML file.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -154,6 +173,9 @@ pub struct Config {
     /// The fixes that should be applied to the parsed file.
     #[serde(default)]
     pub fixes: Fixes,
+    /// Some optional generation options.
+    #[serde(default)]
+    pub generation: Generation,
     /// Whether the path of symbols should be written as comments in the generated code.
     ///
     /// **Default:** `false`

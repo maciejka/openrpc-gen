@@ -3,6 +3,8 @@
 use std::borrow::Cow;
 use std::io;
 
+use convert_case::{Case, Casing};
+
 use crate::parse::{EnumTag, TypeDef, TypeKind, TypeRef};
 
 /// Contains the state of the generator.
@@ -70,6 +72,9 @@ pub fn gen(
 
     for ty in file.types.values() {
         gen_type(w, &mut ctx, ty)?;
+    }
+    for method in &file.methods {
+        gen_method(w, &mut ctx, method)?;
     }
 
     Ok(())
@@ -150,6 +155,67 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
         }
     }
     writeln!(w)?;
+
+    Ok(())
+}
+
+fn gen_method(
+    w: &mut dyn io::Write,
+    ctx: &mut Ctx,
+    method: &crate::parse::Method,
+) -> io::Result<()> {
+    let ident_base = if let Some(ref prefix) = ctx.config.generation.method_name_prefix {
+        method.name.strip_prefix(prefix).unwrap_or(&method.name)
+    } else {
+        &method.name
+    };
+
+    if ctx.config.generation.method_name_constants {
+        writeln!(w, "/// `{}`", method.name)?;
+        writeln!(
+            w,
+            "pub const {}: &str = \"{}\";",
+            ident_base.to_case(Case::ScreamingSnake),
+            method.name
+        )?;
+        writeln!(w)?;
+    }
+
+    if ctx.config.generation.result_types {
+        if let Some(ref result) = method.result {
+            let mut ident = ident_base.to_case(Case::Pascal);
+            ident.push_str("Result");
+            if let Some(ref doc) = result.documentation {
+                writeln!(w, "/// {doc}")?;
+                writeln!(w, "///")?;
+            }
+            writeln!(w, "/// Result type of `{}`.", method.name)?;
+            writeln!(w, "pub type {} = {};", ident, ctx.type_ref_name(&result.ty))?;
+            writeln!(w)?;
+        }
+    }
+
+    if ctx.config.generation.param_types {
+        let mut ident = ident_base.to_case(Case::Pascal);
+        ident.push_str("Params");
+
+        writeln!(w, "/// Parameters of the `{}` method.", method.name)?;
+        writeln!(w, "#[derive(Debug, Clone, Serialize, Deserialize)]")?;
+        writeln!(w, "pub struct {} {{", ident)?;
+        for param in &method.params {
+            if let Some(ref doc) = param.documentation {
+                writeln!(w, "    /// {doc}")?;
+            }
+            writeln!(
+                w,
+                "    pub {}: {},",
+                param.name,
+                ctx.type_ref_name(&param.ty)
+            )?;
+        }
+        writeln!(w, "}}")?;
+        writeln!(w)?;
+    }
 
     Ok(())
 }

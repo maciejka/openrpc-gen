@@ -392,6 +392,20 @@ fn replace_type(file: &mut File, path: &str, by: String) -> bool {
         }
     }
 
+    for method in &mut file.methods {
+        if let Some(result) = &mut method.result {
+            if matches!(&result.ty, TypeRef::Ref(p) if &**p == path) {
+                result.ty = TypeRef::ExternalRef(by.clone());
+            }
+        }
+
+        for param in &mut method.params {
+            if matches!(&param.ty, TypeRef::Ref(p) if &**p == path) {
+                param.ty = TypeRef::ExternalRef(by.clone());
+            }
+        }
+    }
+
     true
 }
 

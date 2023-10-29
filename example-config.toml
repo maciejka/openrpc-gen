@@ -1,5 +1,11 @@
 debug-path = true
 
+[generation]
+method-name-prefix = "starknet_"
+result-types = true
+param-types = true
+method-name-constants = true
+
 [fixes]
 strip-enum-variants = true
 
