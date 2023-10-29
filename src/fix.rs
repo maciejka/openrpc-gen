@@ -205,6 +205,20 @@ fn count_refs(file: &File, type_path: &str) -> usize {
         }
     }
 
+    for method in &file.methods {
+        if let Some(result) = &method.result {
+            if get_inner_ref(&result.ty).is_some_and(|p| &**p == type_path) {
+                count += 1;
+            }
+        }
+
+        for param in &method.params {
+            if get_inner_ref(&param.ty).is_some_and(|p| &**p == type_path) {
+                count += 1;
+            }
+        }
+    }
+
     count
 }
 
