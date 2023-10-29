@@ -148,6 +148,8 @@ checksum = "f665ee40bc4a3c5590afb1e9677db74a508659dfd71e126420da8274909a0167"
 [[package]]
 name = "open-rpc"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f922edc55696fc3c1bb89981d90a6c171603ac1b95f14855a48ee2dd32b08a2b"
 dependencies = [
  "serde",
  "serde_json",
