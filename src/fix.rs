@@ -23,7 +23,7 @@ pub fn fix(file: &mut File, config: &Config) -> Result<(), Vec<String>> {
     rename_things(file, &config.fixes.rename, &mut errs);
     tag_enums(file, &config.fixes.tagged_enums, &mut errs);
     if config.fixes.remove_stray_types {
-        remove_stray_types(file);
+        remove_stray_types(file, &config.fixes.preserve);
     }
 
     if !errs.is_empty() {
@@ -489,14 +489,14 @@ fn replace_type(file: &mut File, path: &str, by: String) -> bool {
     true
 }
 
-fn remove_stray_types(file: &mut File) {
+fn remove_stray_types(file: &mut File, preserve: &BTreeSet<String>) {
     // The set of all nodes that are known not be stray types.
     let mut not_stray = BTreeSet::new();
     // Nodes to visit next.
     let mut to_visit = file
         .types
         .values()
-        .filter(|ty| ty.source == TypeSource::Method)
+        .filter(|ty| ty.source == TypeSource::Method || preserve.contains(&*ty.path))
         .map(|ty| ty.path.clone())
         .chain(
             file.methods

@@ -1,6 +1,6 @@
 //! The configuration file for `openrpc-gen`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use serde::Deserialize;
@@ -153,6 +153,14 @@ pub struct Fixes {
     /// **Default:** `{}`
     #[serde(default)]
     pub make_keyword: BTreeMap<String, String>,
+    /// A list of types to preserve.
+    ///
+    /// By default, types that are not referenced anywhere are removed. Including theme here
+    /// will force them to remain alive.
+    ///
+    /// **Default:** `[]`
+    #[serde(default)]
+    pub preserve: BTreeSet<String>,
 }
 
 impl Default for Fixes {
@@ -168,6 +176,7 @@ impl Default for Fixes {
             tagged_enums: BTreeMap::new(),
             auto_flatten_one_ref: true,
             make_keyword: BTreeMap::new(),
+            preserve: BTreeSet::new(),
         }
     }
 }
