@@ -61,7 +61,49 @@ fn fixup_variants(variants: &mut BTreeMap<Path, EnumVariant>) {
 }
 
 fn flatten_fields(file: &mut File, paths: &[String], errs: &mut Vec<String>) {
-    for path in paths {
+    // The list of paths in `paths` that area types instead of fields.
+    // Those must be filtered.
+    let mut types = BTreeSet::new();
+
+    // The paths to add to the list.
+    let mut paths2 = Vec::new();
+
+    // If some of the paths refer to a type, add that type to the list.
+    for ty in file.types.values() {
+        let TypeKind::Struct(s) = &ty.kind else {
+            continue;
+        };
+        for field in s.fields.values() {
+            let TypeRef::Ref(path) = &field.ty else {
+                continue;
+            };
+            if !paths.iter().any(|x| x == &**path) {
+                continue;
+            }
+
+            let replaced_type = file.types.get(&**path).unwrap();
+
+            match &replaced_type.kind {
+                TypeKind::Alias(_) => (),
+                TypeKind::Struct(_) => {
+                    if !field.flatten {
+                        continue;
+                    }
+                }
+                TypeKind::Enum(_) => continue,
+            }
+
+            types.insert(path.clone());
+            paths2.push(field.path.clone());
+        }
+    }
+
+    for path in paths
+        .iter()
+        .map(|x| &**x)
+        .filter(|x| !types.contains(*x))
+        .chain(paths2.iter().map(|x| &**x))
+    {
         match flatten_field(file, path) {
             Ok(()) => (),
             Err(err) => errs.push(err),
@@ -239,14 +281,6 @@ fn flatten_field(file: &mut File, path: &str) -> Result<(), String> {
         let Some(field) = s.fields.get(path) else {
             continue;
         };
-        if !field.flatten {
-            return Err(format!(
-                "\
-                can't flatten: field is not flatten:\n\
-                - field = {path}\n\
-                ",
-            ));
-        }
         let target_path = match &field.ty {
             TypeRef::Ref(ok) => ok,
             other => {
@@ -259,37 +293,62 @@ fn flatten_field(file: &mut File, path: &str) -> Result<(), String> {
                 ));
             }
         };
-        found = Some((target_path.clone(), ty.path.clone()));
+        found = Some((field.flatten, target_path.clone(), ty.path.clone()));
+        break;
     }
 
-    let Some((target_type, into_type)) = found else {
+    let Some((field_is_flatten, target_type, into_type)) = found else {
         return Err(format!(
             "\
-            can't flatten: field not found:\n
+            can't flatten: field or type not found:\n
             - field = {path}\n\
             ",
         ));
     };
 
-    // Get the fields to put into the `into_type`.
-    let TypeKind::Struct(target_s) = &file.types.get(&target_type).unwrap().kind else {
-        return Err(format!(
-            "\
+    match &file.types.get(&target_type).unwrap().kind {
+        TypeKind::Alias(a) => {
+            // Just change the type to the referenced type.
+
+            let r = a.ty.clone();
+
+            // Remove the field to flatten.
+            let TypeKind::Struct(s) = &mut file.types.get_mut(&into_type).unwrap().kind else {
+                unreachable!();
+            };
+
+            s.fields.get_mut(path).unwrap().ty = r;
+        }
+        TypeKind::Struct(target_s) => {
+            if !field_is_flatten {
+                return Err(format!(
+                    "\
+                can't flatten: field is not flatten:\n\
+                - field = {path}\n\
+                ",
+                ));
+            }
+
+            let mut fields_to_add = target_s.fields.clone();
+
+            // Remove the field to flatten.
+            let TypeKind::Struct(s) = &mut file.types.get_mut(&into_type).unwrap().kind else {
+                unreachable!();
+            };
+
+            s.fields.remove(path);
+            s.fields.append(&mut fields_to_add);
+        }
+        TypeKind::Enum(_) => {
+            return Err(format!(
+                "\
             can't flatten: target type is not a struct:\n\
             - field       = {path}\n\
             - target_type = {target_type}\n\
             ",
-        ));
-    };
-    let mut fields_to_add = target_s.fields.clone();
-
-    // Remove the field to flatten.
-    let TypeKind::Struct(s) = &mut file.types.get_mut(&into_type).unwrap().kind else {
-        unreachable!();
-    };
-
-    s.fields.remove(path);
-    s.fields.append(&mut fields_to_add);
+            ))
+        }
+    }
 
     Ok(())
 }

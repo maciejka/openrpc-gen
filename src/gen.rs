@@ -64,7 +64,6 @@ pub fn gen(
         // \n\
         //     https://github.com/nils-mathieu/openrpc-gen\n\
         //\n\
-        \n\
         "
     )?;
 

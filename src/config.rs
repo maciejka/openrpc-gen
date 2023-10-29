@@ -92,6 +92,8 @@ pub struct Fixes {
     /// Flatten fields into their parent structs. Only works on fields that are already
     /// flattened in the OpenRPC document.
     ///
+    /// When this refers to a type, all fields of that type will be flattened.
+    ///
     /// **Default:** `[]`
     #[serde(default)]
     pub flatten: Vec<String>,
