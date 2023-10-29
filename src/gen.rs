@@ -183,15 +183,23 @@ fn gen_method(
     }
 
     if ctx.config.generation.result_types {
+        let mut ident = ident_base.to_case(Case::Pascal);
+        ident.push_str("Result");
         if let Some(ref result) = method.result {
-            let mut ident = ident_base.to_case(Case::Pascal);
-            ident.push_str("Result");
             if let Some(ref doc) = result.documentation {
                 writeln!(w, "/// {doc}")?;
                 writeln!(w, "///")?;
             }
             writeln!(w, "/// Result type of `{}`.", method.name)?;
             writeln!(w, "pub type {} = {};", ident, ctx.type_ref_name(&result.ty))?;
+            writeln!(w)?;
+        } else {
+            writeln!(
+                w,
+                "/// Result type of `{}`. This method does not return anything.",
+                method.name
+            )?;
+            writeln!(w, "pub type {} = ();", ident_base.to_case(Case::Pascal))?;
             writeln!(w)?;
         }
     }
