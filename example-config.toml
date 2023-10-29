@@ -1,0 +1,44 @@
+debug-path = true
+
+[fixes]
+strip-enum-variants = true
+
+[fixes.replace]
+# Too tricky to automatically fix cleanly
+"#/components/schemas/BLOCK_ID" = "BlockId"
+"#/methods/starknet_syncing/result/Anonymous" = "SyncStatus"
+
+# Duplicates
+"#/methods/starknet_getClassAt/result/_anon" = "MaybeDeprecatedContractClass"
+"#/methods/starknet_getTransactionByBlockIdAndIndex/result/_anon" = "TxnWithHash"
+"#/methods/starknet_getTransactionByHash/result/_anon" = "TxnWithHash"
+
+[fixes.rename]
+# Broken Enum Variants
+"#/methods/starknet_getBlockWithTxHashes/result/_anon/variant0" = "Block"
+"#/methods/starknet_getBlockWithTxs/result/_anon/variant0" = "Block"
+"#/methods/starknet_getStateUpdate/result/_anon/variant0" = "Block"
+"#/methods/starknet_getTransactionReceipt/result/_anon/variant0" = "Receipt"
+"#/methods/starknet_getClass/result/_anon/variant1" = "ContractClass"
+"#/methods/starknet_getClassAt/result/_anon/variant1" = "ContractClass"
+
+# Anonymous Types
+"#/components/schemas/BLOCK_BODY_WITH_TXS/transactions/_anon/_anon" = "TxnWithHash"
+"#/components/schemas/CONTRACT_STORAGE_DIFF_ITEM/storage_entries/_anon/_anon" = "KeyValuePair"
+"#/methods/starknet_blockHashAndNumber/result/_anon" = "BlockHashAndNumber"
+"#/methods/starknet_getBlockWithTxHashes/result/_anon" = "MaybePendingBlockWithTxHashes"
+"#/methods/starknet_getBlockWithTxs/result/_anon" = "MaybePendingBlockWithTxs"
+"#/methods/starknet_getClass/result/_anon" = "MaybeDeprecatedContractClass"
+"#/methods/starknet_getEvents/params/filter/_anon" = "EventFilterWithPageRequest"
+"#/methods/starknet_getStateUpdate/result/_anon" = "MaybePendingStateUpdate"
+"#/methods/starknet_getTransactionReceipt/result/_anon" = "MaybePendingTxnReceipt"
+"#/methods/starknet_getTransactionStatus/result/_anon" = "TxnStatus"
+
+[fixes.tagged-enums]
+"#/components/schemas/DECLARE_TXN" = "version"
+"#/components/schemas/TXN" = "type"
+"#/components/schemas/TXN_RECEIPT" = "type"
+"#/components/schemas/PENDING_TXN_RECEIPT" = "type"
+
+[primitives]
+integer = "u64"
