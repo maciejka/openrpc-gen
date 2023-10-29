@@ -172,6 +172,11 @@ pub enum TypeKind {
 /// A struct definition.
 #[derive(Debug, Clone)]
 pub struct StructDef {
+    /// A collection of tags that have been found in this struct, but that have been previously
+    /// removed from the document by a fix.
+    ///
+    /// This is required because multiple enum types might rely on that field.
+    pub tags: BTreeMap<String, String>,
     /// The fields of this struct.
     pub fields: BTreeMap<Path, StructField>,
 }

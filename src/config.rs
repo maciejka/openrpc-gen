@@ -126,6 +126,14 @@ pub struct Fixes {
     /// **Default:** `{}`
     #[serde(default)]
     pub tagged_enums: BTreeMap<String, String>,
+    /// Make a specific field a keyword with the specified value.
+    ///
+    /// This is useful if you have a field which is a String but the specification doesn't
+    /// specifically say which value it will have.
+    ///
+    /// **Default:** `{}`
+    #[serde(default)]
+    pub make_keyword: BTreeMap<String, String>,
 }
 
 impl Default for Fixes {
@@ -140,6 +148,7 @@ impl Default for Fixes {
             auto_flatten_one_fields: true,
             tagged_enums: BTreeMap::new(),
             auto_flatten_one_ref: true,
+            make_keyword: BTreeMap::new(),
         }
     }
 }

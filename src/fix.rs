@@ -10,6 +10,7 @@ pub fn fix(file: &mut File, config: &Config) -> Result<(), Vec<String>> {
     if config.fixes.strip_enum_variants {
         strip_enum_variants(file);
     }
+    make_keywords(file, &config.fixes.make_keyword, &mut errs);
     flatten_fields(file, &config.fixes.flatten, &mut errs);
     if config.fixes.auto_flatten_one_fields {
         flatten_one_fields(file, &mut errs);
@@ -23,6 +24,10 @@ pub fn fix(file: &mut File, config: &Config) -> Result<(), Vec<String>> {
     tag_enums(file, &config.fixes.tagged_enums, &mut errs);
     if config.fixes.remove_stray_types {
         remove_stray_types(file);
+    }
+
+    if !errs.is_empty() {
+        return Err(errs);
     }
 
     Ok(())
@@ -163,7 +168,9 @@ fn flatten_one_refs(file: &mut File, errs: &mut Vec<String>) {
         // Right now, the only we need to do when merging the alias with its child is to
         // perserve the alias's path.
         let og_path = alias.path.clone();
+        let og_name = alias.name.clone();
         *alias = replaced_type;
+        alias.name = og_name;
         alias.path = og_path;
     }
 }
@@ -557,6 +564,7 @@ fn tag_enum(file: &mut File, path: Path, tag: &str) -> Result<(), String> {
                 unreachable!()
             };
             s.fields.remove(field_path);
+            s.tags.insert(tag.to_owned(), res.value.clone());
         }
     }
 
@@ -594,6 +602,13 @@ fn find_keyword(file: &File, path: Path, name: &str) -> Result<FindKeywordResult
     };
     match &ty.kind {
         TypeKind::Struct(s) => {
+            if let Some(value) = s.tags.get(name) {
+                return Ok(FindKeywordResult {
+                    fields: Vec::new(),
+                    value: value.clone(),
+                });
+            }
+
             // For structs, we need to find exactly one field that has the keyword.
             let mut ret = None;
 
@@ -604,8 +619,10 @@ fn find_keyword(file: &File, path: Path, name: &str) -> Result<FindKeywordResult
                             "\
                             failed to tag enum: field is not a keyword\n\
                             - path = {path}\n\
+                            - field = {field}\n\
                             - name = {name}\n\
                             ",
+                            field = field.path,
                         ));
                     };
 
@@ -638,10 +655,10 @@ fn find_keyword(file: &File, path: Path, name: &str) -> Result<FindKeywordResult
                 if ret.is_some() && ret2.is_ok() {
                     return Err(format!(
                         "\
-                                failed to tag enum: multiple fields with the same name found\n\
-                                - path = {path}\n\
-                                - name = {name}\n\
-                                ",
+                        failed to tag enum: multiple fields with the same name found\n\
+                        - path = {path}\n\
+                        - name = {name}\n\
+                        ",
                     ));
                 } else if ret2.is_ok() {
                     ret = Some(ret2.unwrap());
@@ -653,7 +670,7 @@ fn find_keyword(file: &File, path: Path, name: &str) -> Result<FindKeywordResult
             } else {
                 Err(format!(
                     "\
-                    failed to tag enum: no field with the requested name found\n\
+                    failed to tag enum: no field with the requested name found in struct fields\n\
                     - path = {path}\n\
                     - name = {name}\n\
                     ",
@@ -721,10 +738,10 @@ fn find_keyword(file: &File, path: Path, name: &str) -> Result<FindKeywordResult
                 }
             }
 
-            if rets.is_empty() {
+            if value.is_none() {
                 return Err(format!(
                     "\
-                    failed to tag enum: no field with the requested name found\n\
+                    failed to tag enum: no field with the requested name found in enum variants\n\
                     - path = {path}\n\
                     - name = {name}\n\
                     ",
@@ -752,6 +769,34 @@ fn find_keyword(file: &File, path: Path, name: &str) -> Result<FindKeywordResult
             find_keyword(file, r.clone(), name)
         }
     }
+}
+
+fn make_keywords(file: &mut File, keywords: &BTreeMap<String, String>, errs: &mut Vec<String>) {
+    for (path, by) in keywords {
+        if let Err(err) = make_keyword(file, path, by) {
+            errs.push(err);
+        }
+    }
+}
+
+fn make_keyword(file: &mut File, path: &str, value: &str) -> Result<(), String> {
+    for ty in file.types.values_mut() {
+        let TypeKind::Struct(s) = &mut ty.kind else {
+            continue;
+        };
+
+        if let Some(field) = s.fields.get_mut(path) {
+            field.ty = TypeRef::Keyword(value.into());
+            return Ok(());
+        }
+    }
+
+    Err(format!(
+        "\
+        can't make keyword: path not found:\n\
+        - path = {path}\n\
+        ",
+    ))
 }
 
 // The two following functions (`common_prefix` and `common_suffix`) both work on words rather

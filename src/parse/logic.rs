@@ -373,7 +373,10 @@ fn object_literal_to_type_kind(ctx: &mut Ctx, literal: &rpc::ObjectLiteral) -> T
         );
     }
 
-    TypeKind::Struct(StructDef { fields })
+    TypeKind::Struct(StructDef {
+        fields,
+        tags: BTreeMap::new(),
+    })
 }
 
 /// Creates a new [`TypeRef`] for the provided array literal.
@@ -426,7 +429,10 @@ fn parse_flatten_struct(ctx: &mut Ctx, required: bool, schemas: &[rpc::Schema]) 
         );
     }
 
-    TypeKind::Struct(StructDef { fields })
+    TypeKind::Struct(StructDef {
+        fields,
+        tags: BTreeMap::new(),
+    })
 }
 
 /// Parses the provided list of schemas into an enum.
