@@ -88,7 +88,6 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
     if let Some(doc) = &ty.documentation {
         writeln!(w, "/// {}", doc)?;
     }
-    writeln!(w, "#[derive(Debug, Clone, Serialize, Deserialize)]")?;
     match &ty.kind {
         TypeKind::Alias(alias) => {
             writeln!(
@@ -99,6 +98,7 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
             )?;
         }
         TypeKind::Struct(s) => {
+            writeln!(w, "#[derive(Debug, Clone, Serialize, Deserialize)]")?;
             writeln!(w, "pub struct {} {{", ty.name)?;
             for field in s.fields.values() {
                 if ctx.config.debug_path {
@@ -123,6 +123,7 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
             writeln!(w, "}}")?;
         }
         TypeKind::Enum(e) => {
+            writeln!(w, "#[derive(Debug, Clone, Serialize, Deserialize)]")?;
             match &e.tag {
                 EnumTag::Normal => (),
                 EnumTag::Tagged(tag) => {
