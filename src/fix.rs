@@ -434,6 +434,14 @@ fn remove_stray_types(file: &mut File) {
         .map(|ty| ty.path.clone())
         .collect::<Vec<_>>();
 
+    fn take_ref_into_account(r: &TypeRef, to_visit: &mut Vec<Path>) {
+        match r {
+            TypeRef::Ref(p) => to_visit.push(p.clone()),
+            TypeRef::Array(r) => take_ref_into_account(r, to_visit),
+            _ => (),
+        }
+    }
+
     // Visit the graph to find all the nodes that are not stray types.
     while let Some(path) = to_visit.pop() {
         if !not_stray.insert(path.clone()) {
@@ -447,14 +455,6 @@ fn remove_stray_types(file: &mut File) {
             // still referenced by another type.
             None => continue,
         };
-
-        fn take_ref_into_account(r: &TypeRef, to_visit: &mut Vec<Path>) {
-            match r {
-                TypeRef::Ref(p) => to_visit.push(p.clone()),
-                TypeRef::Array(r) => take_ref_into_account(r, to_visit),
-                _ => (),
-            }
-        }
 
         match &ty.kind {
             TypeKind::Struct(s) => {
@@ -472,6 +472,16 @@ fn remove_stray_types(file: &mut File) {
             TypeKind::Alias(r) => {
                 take_ref_into_account(&r.ty, &mut to_visit);
             }
+        }
+    }
+
+    for method in &file.methods {
+        if let Some(result) = &method.result {
+            take_ref_into_account(&result.ty, &mut to_visit);
+        }
+
+        for param in &method.params {
+            take_ref_into_account(&param.ty, &mut to_visit);
         }
     }
 
