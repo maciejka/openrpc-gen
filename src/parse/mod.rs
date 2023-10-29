@@ -108,6 +108,15 @@ impl TypeRef {
             TypeRef::Null => "null",
         }
     }
+
+    /// Returns the path of the referenced type, if any.
+    pub fn inner_path(&self) -> Option<&Path> {
+        match self {
+            TypeRef::Array(inner) => inner.inner_path(),
+            TypeRef::Ref(path) => Some(path),
+            _ => None,
+        }
+    }
 }
 
 /// The result of an OpenRPC method.

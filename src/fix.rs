@@ -432,13 +432,21 @@ fn remove_stray_types(file: &mut File) {
         .values()
         .filter(|ty| ty.source == TypeSource::Method)
         .map(|ty| ty.path.clone())
+        .chain(
+            file.methods
+                .iter()
+                .filter_map(|m| m.result.as_ref().and_then(|r| r.ty.inner_path()).cloned()),
+        )
+        .chain(
+            file.methods
+                .iter()
+                .flat_map(|m| m.params.iter().filter_map(|p| p.ty.inner_path()).cloned()),
+        )
         .collect::<Vec<_>>();
 
     fn take_ref_into_account(r: &TypeRef, to_visit: &mut Vec<Path>) {
-        match r {
-            TypeRef::Ref(p) => to_visit.push(p.clone()),
-            TypeRef::Array(r) => take_ref_into_account(r, to_visit),
-            _ => (),
+        if let Some(r) = r.inner_path() {
+            to_visit.push(r.clone());
         }
     }
 
@@ -472,16 +480,6 @@ fn remove_stray_types(file: &mut File) {
             TypeKind::Alias(r) => {
                 take_ref_into_account(&r.ty, &mut to_visit);
             }
-        }
-    }
-
-    for method in &file.methods {
-        if let Some(result) = &method.result {
-            take_ref_into_account(&result.ty, &mut to_visit);
-        }
-
-        for param in &method.params {
-            take_ref_into_account(&param.ty, &mut to_visit);
         }
     }
 
