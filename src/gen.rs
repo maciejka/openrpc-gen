@@ -129,7 +129,15 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
             writeln!(w, "}}")?;
         }
         TypeKind::Enum(e) => {
-            writeln!(w, "#[derive(Debug, Clone, Serialize, Deserialize)]")?;
+            writeln!(w, "#[derive(Serialize, Deserialize)]")?;
+            for global_derive in &ctx.config.generation.global_derives {
+                writeln!(w, "#[derive({global_derive})]")?;
+            }
+            if let Some(derives) = ctx.config.generation.derives.get(&*ty.path) {
+                for derive in derives {
+                    writeln!(w, "#[derive({derive})]")?;
+                }
+            }
             match &e.tag {
                 EnumTag::Normal => (),
                 EnumTag::Tagged(tag) => {

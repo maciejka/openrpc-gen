@@ -182,25 +182,59 @@ impl Default for Fixes {
 }
 
 /// Optional Generation.
-#[derive(Default, Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Generation {
     /// A collection of additional `use` statements.
+    ///
+    /// **Default:** `[]`
     #[serde(default)]
     pub additional_imports: Vec<String>,
     /// An optional prefix to remove from method names before generating Rust identifiers
     /// from them.
+    ///
+    /// **Default:** `None`
     #[serde(default)]
     pub method_name_prefix: Option<String>,
     /// Whether to generate constants for method names.
+    ///
+    /// **Default:** `false`
     #[serde(default)]
     pub method_name_constants: bool,
     /// Whether to generate type aliases for method result types.
+    ///
+    /// **Default:** `false`
     #[serde(default)]
     pub result_types: bool,
     /// Whether to generate struct types for method parameters.
+    ///
+    /// **Default:** `false`
     #[serde(default)]
     pub param_types: bool,
+    /// A list of types to derive globally.
+    ///
+    /// **Default:** `[Clone, Debug]`
+    #[serde(default = "defaults::global_derives")]
+    pub global_derives: Vec<String>,
+    /// A list of types associated with traits to derive automatically on them.
+    ///
+    /// **Default:** `{}`
+    #[serde(default)]
+    pub derives: BTreeMap<String, Vec<String>>,
+}
+
+impl Default for Generation {
+    fn default() -> Self {
+        Self {
+            additional_imports: Vec::new(),
+            method_name_prefix: None,
+            method_name_constants: false,
+            result_types: false,
+            param_types: false,
+            global_derives: defaults::global_derives(),
+            derives: BTreeMap::new(),
+        }
+    }
 }
 
 /// The configuration file of `openrpc-gen`. Should be parsed from a TOML file.
@@ -271,5 +305,9 @@ mod defaults {
 
     pub fn num_as_hex() -> String {
         "num_as_hex".into()
+    }
+
+    pub fn global_derives() -> Vec<String> {
+        vec![String::from("Clone"), String::from("Debug")]
     }
 }
