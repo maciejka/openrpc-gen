@@ -4,6 +4,8 @@ mod logic;
 
 use std::collections::BTreeMap;
 
+use crate::config::Config;
+
 pub use self::logic::parse;
 
 /// An error that occurred during parsing.
@@ -77,7 +79,12 @@ pub enum TypeRef {
     /// An integer.
     ///
     /// This usually translates to `i64` or `i32`.
-    Integer,
+    Integer {
+        /// The integer should be formatted as an hexadecimal string.
+        ///
+        /// i.e. `0xDEADBEEF`
+        format_as_hex: bool,
+    },
     /// A number.
     ///
     /// This usually translates to `f64` or `f32`.
@@ -102,7 +109,7 @@ impl TypeRef {
             TypeRef::Boolean => "boolean",
             TypeRef::String => "string",
             TypeRef::Keyword(val) => val.as_str(),
-            TypeRef::Integer => "integer",
+            TypeRef::Integer { .. } => "integer",
             TypeRef::Number => "number",
             TypeRef::Array(_) => "array",
             TypeRef::Null => "null",
@@ -116,6 +123,30 @@ impl TypeRef {
             TypeRef::Ref(path) => Some(path),
             _ => None,
         }
+    }
+
+    /// A collection of attributes to add to the type.
+    pub fn attributes(&self, config: &Config, file: &File) -> Vec<String> {
+        match self {
+            TypeRef::Ref(r) => {
+                if let Some(ty) = file.types.get(r) {
+                    if let TypeKind::Alias(a) = &ty.kind {
+                        return a.ty.attributes(config, file);
+                    }
+                }
+            }
+            TypeRef::Integer {
+                format_as_hex: true,
+            } => {
+                return vec![format!(
+                    "#[serde(with = \"{}\")]",
+                    config.formatters.num_as_hex,
+                )]
+            }
+            _ => (),
+        }
+
+        Vec::new()
     }
 }
 

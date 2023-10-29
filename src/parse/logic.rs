@@ -287,7 +287,9 @@ fn literal_to_type_kind(ctx: &mut Ctx, literal: &rpc::Literal) -> TypeKind {
             ty: TypeRef::Boolean,
         }),
         rpc::Literal::Integer(_) => TypeKind::Alias(AliasDef {
-            ty: TypeRef::Integer,
+            ty: TypeRef::Integer {
+                format_as_hex: false,
+            },
         }),
         rpc::Literal::Number(_) => TypeKind::Alias(AliasDef {
             ty: TypeRef::Number,
@@ -327,6 +329,12 @@ fn string_literal_to_type_kind(ctx: &mut Ctx, literal: &rpc::StringLiteral) -> T
                 tag: EnumTag::Normal,
             })
         }
+    } else if literal.pattern.as_deref() == Some("^0x[a-fA-F0-9]+$") {
+        TypeKind::Alias(AliasDef {
+            ty: TypeRef::Integer {
+                format_as_hex: true,
+            },
+        })
     } else {
         TypeKind::Alias(AliasDef {
             ty: TypeRef::String,

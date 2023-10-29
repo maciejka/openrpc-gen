@@ -62,6 +62,23 @@ impl Default for Primitives {
     }
 }
 
+/// A collection of formatters used for types with special encoding.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct Formatters {
+    /// The name of a module that should be used when formatting integers as hexadecimal strings.
+    #[serde(default = "defaults::num_as_hex")]
+    pub num_as_hex: String,
+}
+
+impl Default for Formatters {
+    fn default() -> Self {
+        Self {
+            num_as_hex: defaults::num_as_hex(),
+        }
+    }
+}
+
 /// A list of fixes that should be applied to the parsed file.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -157,6 +174,9 @@ impl Default for Fixes {
 #[derive(Default, Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Generation {
+    /// A collection of additional `use` statements.
+    #[serde(default)]
+    pub additional_imports: Vec<String>,
     /// An optional prefix to remove from method names before generating Rust identifiers
     /// from them.
     #[serde(default)]
@@ -185,6 +205,9 @@ pub struct Config {
     /// Some optional generation options.
     #[serde(default)]
     pub generation: Generation,
+    /// The formatters that should be used for types with special encoding.
+    #[serde(default)]
+    pub formatters: Formatters,
     /// Whether the path of symbols should be written as comments in the generated code.
     ///
     /// **Default:** `false`
@@ -233,5 +256,9 @@ mod defaults {
 
     pub fn yes() -> bool {
         true
+    }
+
+    pub fn num_as_hex() -> String {
+        "num_as_hex".into()
     }
 }

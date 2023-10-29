@@ -28,7 +28,7 @@ impl<'a> Ctx<'a> {
                     .replace("{}", &self.type_ref_name(inner)),
             ),
             TypeRef::Boolean => Cow::Borrowed(&self.config.primitives.boolean),
-            TypeRef::Integer => Cow::Borrowed(&self.config.primitives.integer),
+            TypeRef::Integer { .. } => Cow::Borrowed(&self.config.primitives.integer),
             TypeRef::Null => Cow::Borrowed(&self.config.primitives.null),
             TypeRef::Number => Cow::Borrowed(&self.config.primitives.number),
             TypeRef::String => Cow::Borrowed(&self.config.primitives.string),
@@ -65,10 +65,14 @@ pub fn gen(
         //     https://github.com/nils-mathieu/openrpc-gen\n\
         //\n\
         \n\
-        use serde::{{Serialize, Deserialize}};\n\
-        \n\
         "
     )?;
+
+    writeln!(w, "use serde::{{Serialize, Deserialize}};")?;
+    for import in &ctx.config.generation.additional_imports {
+        writeln!(w, "use {import};")?;
+    }
+    writeln!(w)?;
 
     for ty in file.types.values() {
         gen_type(w, &mut ctx, ty)?;
@@ -117,6 +121,9 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
                 }
                 if field.name != field.name_in_json {
                     writeln!(w, "    #[serde(rename = \"{}\")]", field.name_in_json)?;
+                }
+                for attr in field.ty.attributes(ctx.config, ctx.file) {
+                    writeln!(w, "    {}", attr)?;
                 }
                 writeln!(w, "    pub {}: {},", field.name, name)?;
             }
