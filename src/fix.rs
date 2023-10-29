@@ -432,7 +432,7 @@ fn rename_thing(file: &mut File, path: &str, by: &str) -> Result<(), String> {
 
 fn replace_types(file: &mut File, replacements: &BTreeMap<String, String>, errs: &mut Vec<String>) {
     for (path, by) in replacements {
-        if !replace_type(file, path, by.into()) {
+        if !replace_type(file, path, by) {
             errs.push(format!(
                 "\
                 can't replace: type not found:\n\
@@ -443,46 +443,48 @@ fn replace_types(file: &mut File, replacements: &BTreeMap<String, String>, errs:
     }
 }
 
-fn replace_type(file: &mut File, path: &str, by: String) -> bool {
+fn replace_type(file: &mut File, path: &str, by: &str) -> bool {
     if file.types.remove(path).is_none() {
         return false;
+    }
+
+    fn replace_ref(ty: &mut TypeRef, src: &str, dst: String) {
+        match ty {
+            TypeRef::Ref(p) if &**p == src => {
+                *ty = TypeRef::ExternalRef(dst);
+            }
+            TypeRef::Array(inner) => replace_ref(&mut *inner, src, dst),
+            _ => (),
+        }
     }
 
     for ty in file.types.values_mut() {
         match &mut ty.kind {
             TypeKind::Struct(s) => {
                 for field in s.fields.values_mut() {
-                    if matches!(&field.ty, TypeRef::Ref(p) if &**p == path) {
-                        field.ty = TypeRef::ExternalRef(by.clone());
-                    }
+                    replace_ref(&mut field.ty, path, by.into());
                 }
             }
             TypeKind::Enum(e) => {
                 for variant in e.variants.values_mut() {
-                    if matches!(&variant.ty, Some(TypeRef::Ref(p)) if &**p == path) {
-                        variant.ty = Some(TypeRef::ExternalRef(by.clone()));
+                    if let Some(ty) = &mut variant.ty {
+                        replace_ref(ty, path, by.into());
                     }
                 }
             }
             TypeKind::Alias(a) => {
-                if matches!(&a.ty, TypeRef::Ref(p) if &**p == path) {
-                    a.ty = TypeRef::ExternalRef(by.clone());
-                }
+                replace_ref(&mut a.ty, path, by.into());
             }
         }
     }
 
     for method in &mut file.methods {
         if let Some(result) = &mut method.result {
-            if matches!(&result.ty, TypeRef::Ref(p) if &**p == path) {
-                result.ty = TypeRef::ExternalRef(by.clone());
-            }
+            replace_ref(&mut result.ty, path, by.into());
         }
 
         for param in &mut method.params {
-            if matches!(&param.ty, TypeRef::Ref(p) if &**p == path) {
-                param.ty = TypeRef::ExternalRef(by.clone());
-            }
+            replace_ref(&mut param.ty, path, by.into());
         }
     }
 
