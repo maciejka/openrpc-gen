@@ -130,6 +130,9 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
         }
         TypeKind::Enum(e) => {
             writeln!(w, "#[derive(Serialize, Deserialize)]")?;
+            if e.copy {
+                writeln!(w, "#[derive(Copy, PartialEq, Eq, Hash)]")?;
+            }
             for global_derive in &ctx.config.generation.global_derives {
                 writeln!(w, "#[derive({global_derive})]")?;
             }

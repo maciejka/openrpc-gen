@@ -326,6 +326,7 @@ fn string_literal_to_type_kind(ctx: &mut Ctx, literal: &rpc::StringLiteral) -> T
                         (path, out)
                     })
                     .collect(),
+                copy: true,
                 tag: EnumTag::Normal,
             })
         }
@@ -473,5 +474,6 @@ fn parse_enum(ctx: &mut Ctx, schemas: &[rpc::Schema]) -> TypeKind {
     TypeKind::Enum(EnumDef {
         variants,
         tag: EnumTag::Untagged,
+        copy: false,
     })
 }

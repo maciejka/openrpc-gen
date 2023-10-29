@@ -244,6 +244,9 @@ pub struct EnumDef {
     pub variants: BTreeMap<Path, EnumVariant>,
     /// Describes how the enum is represented in JSON.
     pub tag: EnumTag,
+    /// Whether the enumeration is a "simple" enum that should implement
+    /// [`Copy`], [`PartialEq`], [`Eq`] and [`Hash`].
+    pub copy: bool,
 }
 
 /// Describes how an enum is represented in JSON.
