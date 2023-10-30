@@ -195,6 +195,12 @@ fn gen_method(
     ctx: &mut Ctx,
     method: &crate::parse::Method,
 ) -> io::Result<()> {
+    let std_mod = if ctx.config.generation.use_core {
+        "core"
+    } else {
+        "std"
+    };
+
     let ident_base = if let Some(ref prefix) = ctx.config.generation.method_name_prefix {
         method.name.strip_prefix(prefix).unwrap_or(&method.name)
     } else {
@@ -310,7 +316,7 @@ fn gen_method(
         writeln!(w)?;
         writeln!(
             w,
-            "            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{"
+            "            fn expecting(&self, f: &mut {std_mod}::fmt::Formatter) -> {std_mod}::fmt::Result {{"
         )?;
         writeln!(
             w,

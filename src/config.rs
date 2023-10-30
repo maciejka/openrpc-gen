@@ -185,6 +185,11 @@ impl Default for Fixes {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Generation {
+    /// Whether to use `core` instead of `std`.
+    ///
+    /// **Default:** `false`
+    #[serde(default)]
+    pub use_core: bool,
     /// A collection of additional `use` statements.
     ///
     /// **Default:** `[]`
@@ -226,6 +231,7 @@ pub struct Generation {
 impl Default for Generation {
     fn default() -> Self {
         Self {
+            use_core: false,
             additional_imports: Vec::new(),
             method_name_prefix: None,
             method_name_constants: false,
