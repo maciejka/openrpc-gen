@@ -4,6 +4,8 @@ mod logic;
 
 use std::collections::BTreeMap;
 
+use open_rpc::ParamStructure;
+
 use crate::config::Config;
 
 pub use self::logic::parse;
@@ -35,6 +37,8 @@ pub struct Method {
     pub documentation: Option<String>,
     /// The parameter of the method.
     pub params: Vec<MethodParameter>,
+    /// The structure of the parameters.
+    pub param_structure: ParamStructure,
     /// The result of the method.
     ///
     /// If `None`, the method is intended to be used as a notification.
@@ -164,6 +168,8 @@ pub struct MethodResult {
 pub struct MethodParameter {
     /// The name of the parameter.
     pub name: String,
+    /// The name of the parameter in JSON representation.
+    pub name_in_json: String,
     /// Some documentation about the parameter.
     pub documentation: Option<String>,
     /// The type of the parameter.

@@ -258,6 +258,9 @@ pub struct Config {
     /// **Default:** `false`
     #[serde(default)]
     pub debug_path: bool,
+    /// Whether to automatically run `rustfmt` on the generated code.
+    #[serde(default)]
+    pub run_rustfmt: bool,
 }
 
 /// Loads the configuration file from the provided path.

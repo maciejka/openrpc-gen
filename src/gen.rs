@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::io;
 
 use convert_case::{Case, Casing};
+use open_rpc::ParamStructure;
 
 use crate::parse::{EnumTag, TypeDef, TypeKind, TypeRef};
 
@@ -19,13 +20,18 @@ struct Ctx<'a> {
 
 impl<'a> Ctx<'a> {
     /// Returns the name of the type referenced by the provided [`TypeRef`].
-    pub fn type_ref_name(&self, r: &'a TypeRef) -> Cow<'a, str> {
+    pub fn type_ref_name(&self, r: &'a TypeRef, required: bool) -> Cow<'a, str> {
+        if !required {
+            let inner = self.type_ref_name(r, true);
+            return Cow::Owned(self.config.primitives.optional.replace("{}", &inner));
+        }
+
         match r {
             TypeRef::Array(inner) => Cow::Owned(
                 self.config
                     .primitives
                     .array
-                    .replace("{}", &self.type_ref_name(inner)),
+                    .replace("{}", &self.type_ref_name(inner, true)),
             ),
             TypeRef::Boolean => Cow::Borrowed(&self.config.primitives.boolean),
             TypeRef::Integer { .. } => Cow::Borrowed(&self.config.primitives.integer),
@@ -68,6 +74,9 @@ pub fn gen(
     )?;
 
     writeln!(w, "use serde::{{Serialize, Deserialize}};")?;
+    if ctx.config.generation.param_types && !ctx.file.methods.is_empty() {
+        writeln!(w, "use serde::ser::SerializeMap;")?;
+    }
     for import in &ctx.config.generation.additional_imports {
         writeln!(w, "use {import};")?;
     }
@@ -97,7 +106,7 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
                 w,
                 "pub type {} = {};",
                 ty.name,
-                ctx.type_ref_name(&alias.ty)
+                ctx.type_ref_name(&alias.ty, true)
             )?;
         }
         TypeKind::Struct(s) => {
@@ -110,10 +119,9 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
                 if let Some(doc) = &field.documentation {
                     writeln!(w, "    /// {}", doc)?;
                 }
-                let mut name = ctx.type_ref_name(&field.ty);
+                let name = ctx.type_ref_name(&field.ty, field.required);
                 if !field.required {
                     writeln!(w, "    #[serde(default)]")?;
-                    name = Cow::Owned(ctx.config.primitives.optional.replace("{}", &name));
                 }
                 if field.flatten {
                     writeln!(w, "    #[serde(flatten)]")?;
@@ -164,7 +172,12 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
                     }
                 }
                 if let Some(inner) = &variant.ty {
-                    writeln!(w, "    {}({}),", variant.name, ctx.type_ref_name(inner))?;
+                    writeln!(
+                        w,
+                        "    {}({}),",
+                        variant.name,
+                        ctx.type_ref_name(inner, true)
+                    )?;
                 } else {
                     writeln!(w, "    {},", variant.name)?;
                 }
@@ -208,7 +221,12 @@ fn gen_method(
                 writeln!(w, "///")?;
             }
             writeln!(w, "/// Result type of `{}`.", method.name)?;
-            writeln!(w, "pub type {} = {};", ident, ctx.type_ref_name(&result.ty))?;
+            writeln!(
+                w,
+                "pub type {} = {};",
+                ident,
+                ctx.type_ref_name(&result.ty, true)
+            )?;
             writeln!(w)?;
         } else {
             writeln!(
@@ -226,19 +244,176 @@ fn gen_method(
         ident.push_str("Params");
 
         writeln!(w, "/// Parameters of the `{}` method.", method.name)?;
-        writeln!(w, "#[derive(Debug, Clone, Serialize, Deserialize)]")?;
+        writeln!(w, "#[derive(Debug, Clone)]")?;
         writeln!(w, "pub struct {} {{", ident)?;
         for param in &method.params {
             if let Some(ref doc) = param.documentation {
                 writeln!(w, "    /// {doc}")?;
             }
+            let param_ident = ctx.type_ref_name(&param.ty, param.required);
+            writeln!(w, "    pub {}: {},", param.name, param_ident)?;
+        }
+        writeln!(w, "}}")?;
+        writeln!(w)?;
+
+        writeln!(w, "impl Serialize for {ident} {{")?;
+        writeln!(w, "        #[allow(unused_mut)]")?;
+        writeln!(
+            w,
+            "    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>"
+        )?;
+        writeln!(w, "    where")?;
+        writeln!(w, "        S: serde::Serializer,")?;
+        writeln!(w, "    {{")?;
+
+        if matches!(
+            method.param_structure,
+            ParamStructure::ByName | ParamStructure::Either
+        ) {
+            writeln!(w, "        let mut map = serializer.serialize_map(None)?;")?;
+            for param in &method.params {
+                writeln!(
+                    w,
+                    "        map.serialize_entry(\"{}\", &self.{})?;",
+                    param.name_in_json, param.name
+                )?;
+            }
+            writeln!(w, "        map.end()")?;
+        } else {
+            writeln!(w, "        let mut seq = serializer.serialize_seq(None)?;")?;
+            for param in &method.params {
+                writeln!(w, "        seq.serialize_element(&self.{})?;", param.name)?;
+            }
+            writeln!(w, "        seq.end()")?;
+        }
+
+        writeln!(w, "    }}")?;
+        writeln!(w, "}}")?;
+        writeln!(w)?;
+
+        writeln!(w, "impl<'de> Deserialize<'de> for {ident} {{")?;
+        writeln!(
+            w,
+            "    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>"
+        )?;
+        writeln!(w, "    where")?;
+        writeln!(w, "        D: serde::Deserializer<'de>,")?;
+        writeln!(w, "    {{")?;
+
+        writeln!(w, "        struct Visitor;")?;
+        writeln!(w)?;
+        writeln!(
+            w,
+            "        impl<'de> serde::de::Visitor<'de> for Visitor {{"
+        )?;
+        writeln!(w, "            type Value = {ident};",)?;
+        writeln!(w)?;
+        writeln!(
+            w,
+            "            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{"
+        )?;
+        writeln!(
+            w,
+            "                write!(f, \"the parameters for `{}`\")",
+            method.name
+        )?;
+        writeln!(w, "            }}")?;
+        writeln!(w)?;
+
+        if matches!(
+            method.param_structure,
+            ParamStructure::ByPosition | ParamStructure::Either
+        ) {
+            writeln!(w, "            #[allow(unused_mut)]")?;
             writeln!(
                 w,
-                "    pub {}: {},",
-                param.name,
-                ctx.type_ref_name(&param.ty)
+                "            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>"
             )?;
+            writeln!(w, "            where")?;
+            writeln!(w, "                A: serde::de::SeqAccess<'de>,")?;
+            writeln!(w, "            {{")?;
+            for (i, param) in method.params.iter().enumerate() {
+                writeln!(
+                    w,
+                    "                let {}: {} = seq.next_element()?.ok_or_else(|| serde::de::Error::invalid_length({}, &\"expected {} parameters\"))?;",
+                    param.name, ctx.type_ref_name(&param.ty, param.required), i + 1, method.params.len(),
+                )?;
+            }
+            writeln!(w)?;
+            writeln!(
+                w,
+                "                if seq.next_element::<serde::de::IgnoredAny>()?.is_some() {{"
+            )?;
+            writeln!(w, "                    return Err(serde::de::Error::invalid_length({}, &\"expected {} parameters\"));", method.params.len() + 1, method.params.len())?;
+            writeln!(w, "                }}")?;
+            writeln!(w)?;
+            writeln!(w, "                Ok({ident} {{")?;
+            for param in &method.params {
+                writeln!(w, "                    {},", param.name)?;
+            }
+            writeln!(w, "                }})")?;
+            writeln!(w, "            }}")?;
+            writeln!(w)?;
         }
+
+        if matches!(
+            method.param_structure,
+            ParamStructure::ByName | ParamStructure::Either
+        ) {
+            writeln!(w, "            #[allow(unused_variables)]")?;
+            writeln!(
+                w,
+                "            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>"
+            )?;
+            writeln!(w, "            where")?;
+            writeln!(w, "                A: serde::de::MapAccess<'de>,")?;
+            writeln!(w, "            {{")?;
+            writeln!(w, "                #[derive(Deserialize)]")?;
+            writeln!(w, "                struct Helper {{")?;
+            for param in &method.params {
+                if !param.required {
+                    writeln!(w, "                        #[serde(default)]")?;
+                }
+                writeln!(
+                    w,
+                    "                    {}: {},",
+                    param.name,
+                    ctx.type_ref_name(&param.ty, param.required)
+                )?;
+            }
+            writeln!(w, "                }}")?;
+            writeln!(w)?;
+            writeln!(w, "                let helper = Helper::deserialize(serde::de::value::MapAccessDeserializer::new(map))?;")?;
+            writeln!(w)?;
+            writeln!(w, "                Ok({ident} {{")?;
+            for param in &method.params {
+                writeln!(
+                    w,
+                    "                    {}: helper.{},",
+                    param.name, param.name
+                )?;
+            }
+            writeln!(w, "                }})")?;
+            writeln!(w, "            }}")?;
+            writeln!(w)?;
+        }
+
+        writeln!(w, "        }}")?;
+        writeln!(w)?;
+
+        match method.param_structure {
+            ParamStructure::ByName => {
+                writeln!(w, "        deserializer.deserialize_map(Visitor)")?;
+            }
+            ParamStructure::ByPosition => {
+                writeln!(w, "        deserializer.deserialize_seq(Visitor)")?;
+            }
+            ParamStructure::Either => {
+                writeln!(w, "        deserializer.deserialize_any(Visitor)")?;
+            }
+        }
+
+        writeln!(w, "    }}")?;
         writeln!(w, "}}")?;
         writeln!(w)?;
     }

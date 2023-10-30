@@ -56,6 +56,13 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     }
+    drop(output);
+    if config.run_rustfmt {
+        if let Err(err) = run_rustmft(&cmd.output) {
+            let _ = print_error(format_args!("{}", err));
+            return ExitCode::FAILURE;
+        }
+    }
     ExitCode::SUCCESS
 }
 
@@ -78,4 +85,19 @@ fn load_document(path: &Path) -> Result<open_rpc::OpenRpc, String> {
     let buf = std::io::BufReader::new(file);
     let document = serde_json::from_reader(buf).map_err(|e| e.to_string())?;
     Ok(document)
+}
+
+/// Runs `rustfmt` on the provided path.
+fn run_rustmft(path: &Path) -> std::io::Result<()> {
+    let status = std::process::Command::new("rustfmt")
+        .arg(path)
+        .status()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    if !status.success() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "rustfmt failed",
+        ));
+    }
+    Ok(())
 }

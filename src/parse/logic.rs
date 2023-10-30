@@ -139,6 +139,7 @@ fn parse_method(ctx: &mut Ctx, method: &rpc::Method) -> Method {
         documentation,
         params,
         result,
+        param_structure: method.param_structure,
     }
 }
 
@@ -179,7 +180,8 @@ fn parse_params(
 /// Parses a method parameter.
 fn parse_param(ctx: &mut Ctx, param: &rpc::ContentDescriptor) -> MethodParameter {
     ctx.push_path(&param.name);
-    let name = param.name.clone();
+    let name_in_json = param.name.clone();
+    let name = field_name(name_in_json.clone());
     let documentation = param.description.clone().or_else(|| param.summary.clone());
     let ty = parse_type_ref(ctx, TypeSource::Method, &param.schema);
     let required = param.required;
@@ -187,6 +189,7 @@ fn parse_param(ctx: &mut Ctx, param: &rpc::ContentDescriptor) -> MethodParameter
 
     MethodParameter {
         name,
+        name_in_json,
         documentation,
         ty,
         required,
