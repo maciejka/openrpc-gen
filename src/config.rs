@@ -152,7 +152,7 @@ pub struct Fixes {
     ///
     /// **Default:** `{}`
     #[serde(default)]
-    pub make_keyword: BTreeMap<String, String>,
+    pub set_tags: BTreeMap<String, String>,
     /// A list of types to preserve.
     ///
     /// By default, types that are not referenced anywhere are removed. Including theme here
@@ -175,7 +175,7 @@ impl Default for Fixes {
             auto_flatten_one_fields: true,
             tagged_enums: BTreeMap::new(),
             auto_flatten_one_ref: true,
-            make_keyword: BTreeMap::new(),
+            set_tags: BTreeMap::new(),
             preserve: BTreeSet::new(),
         }
     }

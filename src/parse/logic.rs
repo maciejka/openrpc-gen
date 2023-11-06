@@ -266,15 +266,9 @@ fn parse_type_ref(ctx: &mut Ctx, source: TypeSource, schema: &rpc::Schema) -> Ty
 /// Parses the provided [`rpc::SchemaContents`] into a [`TypeKind`].
 fn parse_type_kind(ctx: &mut Ctx, contents: &rpc::SchemaContents) -> TypeKind {
     match contents {
-        rpc::SchemaContents::Reference { reference } => {
-            if ctx.doc.get_schema(reference).is_none() {
-                ctx.add_error(format!("reference `{}` not found", reference));
-            }
-
-            TypeKind::Alias(AliasDef {
-                ty: TypeRef::Ref(Path::from(reference.as_str())),
-            })
-        }
+        rpc::SchemaContents::Reference { reference } => TypeKind::Alias(AliasDef {
+            ty: TypeRef::Ref(Path::from(reference.as_str())),
+        }),
         rpc::SchemaContents::Literal(literal) => literal_to_type_kind(ctx, literal),
         rpc::SchemaContents::AllOf { all_of } => parse_flatten_struct(ctx, true, all_of),
         rpc::SchemaContents::AnyOf { any_of } => parse_flatten_struct(ctx, false, any_of),

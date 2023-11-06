@@ -10,7 +10,11 @@ pub fn fix(file: &mut File, config: &Config) -> Result<(), Vec<String>> {
     if config.fixes.strip_enum_variants {
         strip_enum_variants(file);
     }
-    make_keywords(file, &config.fixes.make_keyword, &mut errs);
+    set_tags(file, &config.fixes.set_tags, &mut errs);
+    tag_enums(file, &config.fixes.tagged_enums, &mut errs);
+    remove_things(file, &config.fixes.remove, &mut errs);
+    replace_types(file, &config.fixes.replace, &mut errs);
+    rename_things(file, &config.fixes.rename, &mut errs);
     flatten_fields(file, &config.fixes.flatten, &mut errs);
     if config.fixes.auto_flatten_one_fields {
         flatten_one_fields(file, &mut errs);
@@ -18,10 +22,6 @@ pub fn fix(file: &mut File, config: &Config) -> Result<(), Vec<String>> {
     if config.fixes.auto_flatten_one_ref {
         flatten_one_refs(file, &mut errs);
     }
-    remove_things(file, &config.fixes.remove, &mut errs);
-    replace_types(file, &config.fixes.replace, &mut errs);
-    rename_things(file, &config.fixes.rename, &mut errs);
-    tag_enums(file, &config.fixes.tagged_enums, &mut errs);
     if config.fixes.remove_stray_types {
         remove_stray_types(file, &config.fixes.preserve);
     }
@@ -159,6 +159,12 @@ fn flatten_one_refs(file: &mut File, errs: &mut Vec<String>) {
                     let TypeRef::Ref(ty_path) = &field.ty else {
                         continue;
                     };
+                    if !matches!(
+                        file.types.get(ty_path).unwrap().kind,
+                        TypeKind::Alias(_) | TypeKind::Struct(_)
+                    ) {
+                        continue;
+                    }
                     if count_refs(file, ty_path) == 1 {
                         fields.push(field.path.clone());
                     }
@@ -444,9 +450,7 @@ fn replace_types(file: &mut File, replacements: &BTreeMap<String, String>, errs:
 }
 
 fn replace_type(file: &mut File, path: &str, by: &str) -> bool {
-    if file.types.remove(path).is_none() {
-        return false;
-    }
+    file.types.remove(path);
 
     fn replace_ref(ty: &mut TypeRef, src: &str, dst: String) {
         match ty {
@@ -832,19 +836,24 @@ fn find_keyword(file: &File, path: Path, name: &str) -> Result<FindKeywordResult
     }
 }
 
-fn make_keywords(file: &mut File, keywords: &BTreeMap<String, String>, errs: &mut Vec<String>) {
+fn set_tags(file: &mut File, keywords: &BTreeMap<String, String>, errs: &mut Vec<String>) {
     for (path, by) in keywords {
-        if let Err(err) = make_keyword(file, path, by) {
+        if let Err(err) = set_tag(file, path, by) {
             errs.push(err);
         }
     }
 }
 
-fn make_keyword(file: &mut File, path: &str, value: &str) -> Result<(), String> {
+fn set_tag(file: &mut File, path: &str, value: &str) -> Result<(), String> {
     for ty in file.types.values_mut() {
         let TypeKind::Struct(s) = &mut ty.kind else {
             continue;
         };
+
+        if let Some(field) = s.fields.remove(path) {
+            s.tags.insert(field.name_in_json, value.into());
+            return Ok(());
+        }
 
         if let Some(field) = s.fields.get_mut(path) {
             field.ty = TypeRef::Keyword(value.into());
