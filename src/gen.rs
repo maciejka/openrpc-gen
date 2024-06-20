@@ -1,11 +1,11 @@
 //! Contains the code that actually generates the Rust code.
 
+use convert_case::{Case, Casing};
+use open_rpc::ParamStructure;
 use std::borrow::Cow;
 use std::io;
 
-use convert_case::{Case, Casing};
-use open_rpc::ParamStructure;
-
+use crate::deps::TypeDeps;
 use crate::parse::{EnumTag, TypeDef, TypeKind, TypeRef};
 
 /// Contains the state of the generator.
@@ -16,6 +16,7 @@ struct Ctx<'a> {
     pub file: &'a crate::parse::File,
     /// The configuration used to generate the file.
     pub config: &'a crate::config::Config,
+    pub deps: &'a crate::deps::TypeDeps,
 }
 
 impl<'a> Ctx<'a> {
@@ -56,7 +57,20 @@ pub fn gen(
     file: &crate::parse::File,
     config: &crate::config::Config,
 ) -> io::Result<()> {
-    let mut ctx = Ctx { file, config };
+    let mut ctx = Ctx {
+        file,
+        config,
+        deps: &TypeDeps::new(file, config),
+    };
+
+    for n in ctx.deps.get_nodes() {
+        let refers_to_felt = ctx.deps.has_path(n, &String::from("Felt"));
+        let with_array = ctx.deps.has_path(n, &String::from("Array<Felt>"));
+        println!(
+            "{} refers to {}: {}, with array: {}",
+            n, "Felt", refers_to_felt, with_array
+        );
+    }
 
     writeln!(
         w,

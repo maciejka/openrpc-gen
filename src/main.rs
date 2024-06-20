@@ -4,6 +4,7 @@ use std::process::ExitCode;
 
 mod command_line;
 mod config;
+mod deps;
 mod fix;
 mod gen;
 mod parse;
