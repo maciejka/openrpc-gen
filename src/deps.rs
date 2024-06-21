@@ -12,7 +12,14 @@ pub(crate) struct TypeDeps {
 }
 
 impl TypeDeps {
-    pub(crate) fn new(file: &crate::parse::File, config: &crate::config::Config) -> TypeDeps {
+    pub(crate) fn new() -> TypeDeps {
+        TypeDeps {
+            g: Default::default(),
+            nodes: Default::default(),
+        }
+    }
+
+    pub(crate) fn add(&mut self, config: &crate::config::Config, file: &crate::parse::File) {
         fn lift_out<'a>(
             file: &'a crate::parse::File,
             config: &'a crate::config::Config,
@@ -34,48 +41,42 @@ impl TypeDeps {
             }
         }
 
-        fn is_array<'a>(
-            r: &'a TypeRef,
-        ) -> bool {
-            match r {
-                TypeRef::Array(_) => true,
-                _ => false,
-            }
-        }
-
         fn add_dep(
             deps: &mut TypeDeps,
             file: &crate::parse::File,
             config: &crate::config::Config,
             a: String,
             b: &TypeRef,
+            _required: bool,
         ) {
             let t = lift_out(file, config, b);
             deps.add_edge(a.clone(), String::from(t));
-            if is_array(b) {
-                deps.add_edge(a, format!("Array<{}>", t));
-            }
+            // if !required {
+            //     deps.add_edge(a.clone(), format!("_AddDefault<{}>", t));
+            // }
         }
-
-        let mut deps = TypeDeps {
-            g: Default::default(),
-            nodes: Default::default(),
-        };
 
         for ty in file.types.values() {
             match &ty.kind {
                 TypeKind::Alias(alias) => {
-                    add_dep(&mut deps, file, config, ty.name.clone(), &alias.ty)
+                    add_dep(self, file, config, ty.name.clone(), &alias.ty, false)
                 }
                 TypeKind::Struct(s) => {
                     for field in s.fields.values() {
-                        add_dep(&mut deps, file, config, ty.name.clone(), &&field.ty);
+                        add_dep(
+                            self,
+                            file,
+                            config,
+                            ty.name.clone(),
+                            &&field.ty,
+                            field.required,
+                        );
                     }
                 }
                 TypeKind::Enum(e) => {
                     for variant in e.variants.values() {
                         if let Some(inner) = &variant.ty {
-                            add_dep(&mut deps, file, config, ty.name.clone(), inner);
+                            add_dep(self, file, config, ty.name.clone(), inner, false);
                         }
                     }
                 }
@@ -92,17 +93,16 @@ impl TypeDeps {
             if config.generation.param_types {
                 for param in &method.params {
                     add_dep(
-                        &mut deps,
+                        self,
                         file,
                         config,
                         format!("{}Params", ident_base.to_case(Case::Pascal)),
                         &param.ty,
+                        param.required,
                     );
                 }
             }
         }
-
-        deps
     }
 
     pub(crate) fn get_nodes(&self) -> Keys<String, NodeIndex<u32>> {
@@ -110,9 +110,25 @@ impl TypeDeps {
     }
 
     pub(crate) fn has_path(&self, a: &String, b: &String) -> bool {
+        if !self.nodes.contains_key(a) || !self.nodes.contains_key(b) {
+            return false;
+        }
         let a_node = self.nodes.get(a).unwrap();
         let b_node = self.nodes.get(b).unwrap();
         algo::has_path_connecting(&self.g, *a_node, *b_node, None)
+    }
+
+    pub(crate) fn has_indirect_path(&self, a: &String, b: &String) -> bool {
+        let a_node = self.nodes.get(a).unwrap();
+        let b_node = self.nodes.get(b).unwrap();
+        let paths =
+            algo::k_shortest_path::k_shortest_path(&self.g, *a_node, Some(*b_node), 1, |_| 1);
+
+        if let Some(path) = paths.get(b_node) {
+            return *path > 1;
+        }
+
+        return false;
     }
 
     fn add_edge(&mut self, a: String, b: String) {

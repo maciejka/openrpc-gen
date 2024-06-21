@@ -17,14 +17,24 @@ struct Ctx<'a> {
     /// The configuration used to generate the file.
     pub config: &'a crate::config::Config,
     pub deps: &'a crate::deps::TypeDeps,
+    pub generic_type: String,
 }
 
 impl<'a> Ctx<'a> {
     /// Returns the name of the type referenced by the provided [`TypeRef`].
     pub fn type_ref_name(&self, r: &'a TypeRef, required: bool) -> Cow<'a, str> {
         if !required {
-            let inner = self.type_ref_name(r, true);
-            return Cow::Owned(self.config.primitives.optional.replace("{}", &inner));
+            let inner = self.type_ref_name(r, true).into_owned();
+            return if self.deps.has_path(&inner, &self.generic_type) {
+                Cow::Owned(
+                    self.config
+                        .primitives
+                        .optional
+                        .replace("{}", format!("{}<{}>", &inner, self.generic_type).as_str()),
+                )
+            } else {
+                Cow::Owned(self.config.primitives.optional.replace("{}", &inner))
+            };
         }
 
         match r {
@@ -43,10 +53,23 @@ impl<'a> Ctx<'a> {
                 Cow::Owned(format!("{} /* {} */", &self.config.primitives.string, val))
             }
             TypeRef::Ref(path) => match self.file.types.get(path) {
-                Some(ty) => Cow::Borrowed(&ty.name),
+                Some(ty) => {
+                    println!("checking: {} -> {}", &ty.name, &self.generic_type);
+                    if self.deps.has_path(&ty.name, &self.generic_type) {
+                        Cow::Owned(format!("{}<{}>", &ty.name, &self.generic_type))
+                    } else {
+                        Cow::Borrowed(&ty.name)
+                    }
+                }
                 None => Cow::Owned(format!("BrokenReference /* {path} */")),
             },
-            TypeRef::ExternalRef(name) => Cow::Borrowed(name),
+            TypeRef::ExternalRef(name) => {
+                if self.deps.has_path(&name, &self.generic_type) {
+                    Cow::Owned(format!("{}<{}>", &name, &self.generic_type))
+                } else {
+                    Cow::Borrowed(&name)
+                }
+            }
         }
     }
 }
@@ -56,21 +79,24 @@ pub fn gen(
     w: &mut dyn io::Write,
     file: &crate::parse::File,
     config: &crate::config::Config,
+    deps: &TypeDeps,
 ) -> io::Result<()> {
     let mut ctx = Ctx {
         file,
         config,
-        deps: &TypeDeps::new(file, config),
+        deps,
+        generic_type: String::from("Felt"),
     };
 
-    for n in ctx.deps.get_nodes() {
-        let refers_to_felt = ctx.deps.has_path(n, &String::from("Felt"));
-        let with_array = ctx.deps.has_path(n, &String::from("Array<Felt>"));
-        println!(
-            "{} refers to {}: {}, with array: {}",
-            n, "Felt", refers_to_felt, with_array
-        );
-    }
+    // for n in ctx.deps.get_nodes() {
+    //     let refers_to_felt = ctx.deps.has_path(n, &String::from("Felt"));
+    //     // let with_default = ctx.deps.has_path(n, &String::from("_AddDefault"));
+    //     // let with_default = ctx.deps.has_indirect_path(n, &String::from("_AddDefault<Felt>"));
+    //     println!(
+    //         "{} refers to {}: {}, default required: {}",
+    //         n, "Felt", refers_to_felt, with_default
+    //     );
+    // }
 
     writeln!(
         w,
@@ -116,16 +142,31 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
     }
     match &ty.kind {
         TypeKind::Alias(alias) => {
-            writeln!(
-                w,
-                "pub type {} = {};",
-                ty.name,
-                ctx.type_ref_name(&alias.ty, true)
-            )?;
+            if ctx.deps.has_path(&ty.name, &ctx.generic_type) {
+                writeln!(
+                    w,
+                    "pub type {}<{}> = {};",
+                    ty.name,
+                    ctx.generic_type,
+                    ctx.type_ref_name(&alias.ty, true)
+                )?;
+            } else {
+                writeln!(
+                    w,
+                    "pub type {} = {};",
+                    ty.name,
+                    ctx.type_ref_name(&alias.ty, true)
+                )?;
+            }
         }
         TypeKind::Struct(s) => {
             writeln!(w, "#[derive(Debug, Clone, Serialize, Deserialize)]")?;
-            writeln!(w, "pub struct {} {{", ty.name)?;
+            if ctx.deps.has_path(&ty.name, &ctx.generic_type) {
+                writeln!(w, "pub struct {}<{}> {{", ty.name, &ctx.generic_type)?;
+            } else {
+                writeln!(w, "pub struct {} {{", ty.name)?;
+            }
+
             for field in s.fields.values() {
                 if ctx.config.debug_path {
                     writeln!(w, "    // {}", field.path)?;
@@ -172,7 +213,13 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
                     writeln!(w, "#[serde(untagged)]")?;
                 }
             }
-            writeln!(w, "pub enum {} {{", ty.name)?;
+
+            if ctx.deps.has_path(&ty.name, &ctx.generic_type) {
+                writeln!(w, "pub enum {}<{}> {{", ty.name, ctx.generic_type)?;
+            } else {
+                writeln!(w, "pub enum {} {{", ty.name)?;
+            }
+
             for variant in e.variants.values() {
                 if ctx.config.debug_path {
                     writeln!(w, "    // {}", variant.path)?;
@@ -186,12 +233,13 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
                     }
                 }
                 if let Some(inner) = &variant.ty {
-                    writeln!(
-                        w,
-                        "    {}({}),",
-                        variant.name,
-                        ctx.type_ref_name(inner, true)
-                    )?;
+                    let ty_name = ctx.type_ref_name(inner, true).into_owned();
+                    let variant_type = if ctx.deps.has_path(&ty_name, &ctx.generic_type) {
+                        format!("{}<{}>", ty_name, ctx.generic_type)
+                    } else {
+                        ty_name
+                    };
+                    writeln!(w, "    {}({}),", variant.name, variant_type)?;
                 } else {
                     writeln!(w, "    {},", variant.name)?;
                 }
