@@ -110,6 +110,9 @@ impl TypeDeps {
     }
 
     pub(crate) fn has_path(&self, a: &String, b: &String) -> bool {
+        if a == b {
+            return false;
+        }
         if !self.nodes.contains_key(a) || !self.nodes.contains_key(b) {
             return false;
         }
@@ -131,7 +134,7 @@ impl TypeDeps {
         return false;
     }
 
-    fn add_edge(&mut self, a: String, b: String) {
+    pub(crate) fn add_edge(&mut self, a: String, b: String) {
         let a = match self.nodes.get(&a) {
             Some(n) => *n,
             None => {

@@ -54,7 +54,6 @@ impl<'a> Ctx<'a> {
             }
             TypeRef::Ref(path) => match self.file.types.get(path) {
                 Some(ty) => {
-                    println!("checking: {} -> {}", &ty.name, &self.generic_type);
                     if self.deps.has_path(&ty.name, &self.generic_type) {
                         Cow::Owned(format!("{}<{}>", &ty.name, &self.generic_type))
                     } else {
@@ -85,7 +84,7 @@ pub fn gen(
         file,
         config,
         deps,
-        generic_type: String::from("Felt"),
+        generic_type: String::from("F"),
     };
 
     // for n in ctx.deps.get_nodes() {
@@ -160,7 +159,7 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
             }
         }
         TypeKind::Struct(s) => {
-            writeln!(w, "#[derive(Debug, Clone, Serialize, Deserialize)]")?;
+            writeln!(w, "#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]")?;
             if ctx.deps.has_path(&ty.name, &ctx.generic_type) {
                 writeln!(w, "pub struct {}<{}> {{", ty.name, &ctx.generic_type)?;
             } else {
@@ -313,7 +312,13 @@ fn gen_method(
 
         writeln!(w, "/// Parameters of the `{}` method.", method.name)?;
         writeln!(w, "#[derive(Debug, Clone)]")?;
-        writeln!(w, "pub struct {} {{", ident)?;
+
+        if ctx.deps.has_path(&ident, &ctx.generic_type) {
+            writeln!(w, "pub struct {}<{}> {{", ident, &ctx.generic_type)?;
+        } else {
+            writeln!(w, "pub struct {} {{", ident)?;
+        }
+        
         for param in &method.params {
             if let Some(ref doc) = param.documentation {
                 writeln!(w, "    /// {doc}")?;

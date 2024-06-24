@@ -36,19 +36,19 @@ fn main() -> Result<(), String> {
     deps.add(&trace_config, &trace_document);
     deps.add(&write_config, &write_document);
 
-    println!(
-        "has_path(TxnHash, Felt): {}",
-        deps.has_path(&String::from("TxnHash"), &String::from("Felt"))
-    );
-
-    // generate(&rpc_document, &rpc_config, &deps, PathBuf::from("./starknet_api_openrpc.rs"))?;
+    deps.add_edge(String::from("BlockId"), String::from("F"));
+    deps.add_edge(String::from("BroadcastedInvokeTxn"), String::from("F"));
+    deps.add_edge(String::from("BroadcastedDeclareTxn"), String::from("F"));
+    deps.add_edge(String::from("BroadcastedDeployAccountTxn"), String::from("F"));
+    
+    generate(&rpc_document, &rpc_config, &deps, PathBuf::from("./starknet_api_openrpc.rs"))?;
     generate(
         &trace_document,
         &trace_config,
         &deps,
         PathBuf::from("./starknet_trace_api_openrpc.rs"),
     )?;
-    // generate(&write_document, &write_config, &deps, PathBuf::from("./starknet_write_api.rs"))?;
+    generate(&write_document, &write_config, &deps, PathBuf::from("./starknet_write_api.rs"))?;
 
     Ok(())
 }
