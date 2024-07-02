@@ -1,13 +1,15 @@
 use convert_case::{Case, Casing};
-use petgraph::algo;
+use petgraph::{algo, Direction};
 use petgraph::graph::{DiGraph, NodeIndex};
 use std::collections::hash_map::Keys;
 use std::collections::HashMap;
+use petgraph::algo::has_path_connecting;
+use petgraph::visit::EdgeRef;
 
 use crate::parse::{TypeKind, TypeRef};
 
 pub(crate) struct TypeDeps {
-    g: DiGraph<(), ()>,
+    g: DiGraph<String, ()>,
     nodes: HashMap<String, NodeIndex<u32>>,
 }
 
@@ -47,36 +49,28 @@ impl TypeDeps {
             config: &crate::config::Config,
             a: String,
             b: &TypeRef,
-            _required: bool,
+            required: bool,
         ) {
-            let t = lift_out(file, config, b);
-            deps.add_edge(a.clone(), String::from(t));
-            // if !required {
-            //     deps.add_edge(a.clone(), format!("_AddDefault<{}>", t));
-            // }
+            let b = String::from(lift_out(file, config, b));
+            deps.add_edge(a.clone(), b.clone());
+            if !required {
+                deps.add_edge(a.clone(), "_MaybeImplicitDefault".into());
+                deps.add_edge(b.clone(), "_Optional".into());
+            }
         }
 
         for ty in file.types.values() {
             match &ty.kind {
-                TypeKind::Alias(alias) => {
-                    add_dep(self, file, config, ty.name.clone(), &alias.ty, false)
-                }
+                TypeKind::Alias(alias) => add_dep(self, file, config, ty.name.clone(), &alias.ty, true),
                 TypeKind::Struct(s) => {
                     for field in s.fields.values() {
-                        add_dep(
-                            self,
-                            file,
-                            config,
-                            ty.name.clone(),
-                            &&field.ty,
-                            field.required,
-                        );
+                        add_dep(self, file, config, ty.name.clone(), &&field.ty, field.required);
                     }
                 }
                 TypeKind::Enum(e) => {
                     for variant in e.variants.values() {
                         if let Some(inner) = &variant.ty {
-                            add_dep(self, file, config, ty.name.clone(), inner, false);
+                            add_dep(self, file, config, ty.name.clone(), inner, true);
                         }
                     }
                 }
@@ -122,35 +116,64 @@ impl TypeDeps {
     }
 
     pub(crate) fn has_indirect_path(&self, a: &String, b: &String) -> bool {
-        let a_node = self.nodes.get(a).unwrap();
-        let b_node = self.nodes.get(b).unwrap();
-        let paths =
-            algo::k_shortest_path::k_shortest_path(&self.g, *a_node, Some(*b_node), 1, |_| 1);
-
-        if let Some(path) = paths.get(b_node) {
-            return *path > 1;
+        if !self.nodes.contains_key(a) || !self.nodes.contains_key(b) {
+            return false;
         }
+        let a = self.nodes.get(a).unwrap();
+        let b = self.nodes.get(b).unwrap();
 
-        return false;
+        algo::all_simple_paths::<Vec<_>, _>(&self.g, *a, *b, 1, None).next().is_some()
     }
 
     pub(crate) fn add_edge(&mut self, a: String, b: String) {
-        let a = match self.nodes.get(&a) {
-            Some(n) => *n,
-            None => {
-                let n = self.g.add_node(());
-                self.nodes.insert(a, n);
-                n
-            }
-        };
-        let b = match self.nodes.get(&b) {
-            Some(n) => *n,
-            None => {
-                let n = self.g.add_node(());
-                self.nodes.insert(b, n);
-                n
-            }
-        };
+        let a = self.get_node(&a);
+        let b = self.get_node(&b);
         self.g.add_edge(a, b, ());
+    }
+
+    pub(crate) fn fix_defaults(&mut self) {
+        let maybe_implicit_default = self.get_node(&"_MaybeImplicitDefault".into());
+        let f = self.get_node(&String::from("F"));
+        let d = self.get_node(&format!("{}_ImplicitDefault", "F"));
+        let optional = self.get_node(&String::from("_Optional"));
+        let edges =
+            self.g.edges_directed(maybe_implicit_default, Direction::Incoming)
+                .filter(|e| {
+                    self.g
+                        .edges(e.source())
+                        .filter(|e|
+                            self.g.contains_edge(e.target(), optional) &&
+                                has_path_connecting(&self.g, e.target(), f, None) &&
+                                e.target() != f
+                        ).count() > 0
+                })
+                .map(|e| e.source())
+                .collect::<Vec<_>>();
+        for e in edges {
+            self.g.add_edge(e, d, ());
+        }
+    }
+
+    fn get_node(&mut self, n: &String) -> NodeIndex {
+        match self.nodes.get(n) {
+            Some(i) => *i,
+            None => {
+                let i = self.g.add_node(n.clone());
+                self.nodes.insert(n.to_string(), i);
+                i
+            }
+        }
+    }
+
+    pub(crate) fn debug(&mut self, a: &String, b: &String) {
+        let a = self.get_node(a);
+        let b = self.get_node(b);
+        let ways = algo::all_simple_paths::<Vec<_>, _>(
+            &self.g, a, b, 0, None)
+            .collect::<Vec<_>>();
+        println!("---------------->");
+        for n in ways.first().unwrap() {
+            println!("{:?}", self.g.node_weight(*n));
+        }
     }
 }

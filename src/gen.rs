@@ -18,6 +18,7 @@ struct Ctx<'a> {
     pub config: &'a crate::config::Config,
     pub deps: &'a crate::deps::TypeDeps,
     pub generic_type: String,
+    pub default_required_marker: String,
 }
 
 impl<'a> Ctx<'a> {
@@ -85,6 +86,7 @@ pub fn gen(
         config,
         deps,
         generic_type: String::from("F"),
+        default_required_marker: String::from("F_ImplicitDefault"),
     };
 
     // for n in ctx.deps.get_nodes() {
@@ -139,16 +141,30 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
     if let Some(doc) = &ty.documentation {
         writeln!(w, "/// {}", doc)?;
     }
+
+    let generic_needed = ctx.deps.has_path(&ty.name, &ctx.generic_type);
+    let default_needed = ctx.deps.has_indirect_path(&ty.name, &ctx.default_required_marker);
+
     match &ty.kind {
         TypeKind::Alias(alias) => {
-            if ctx.deps.has_path(&ty.name, &ctx.generic_type) {
-                writeln!(
-                    w,
-                    "pub type {}<{}> = {};",
-                    ty.name,
-                    ctx.generic_type,
-                    ctx.type_ref_name(&alias.ty, true)
-                )?;
+            if generic_needed {
+                if default_needed {
+                    writeln!(
+                        w,
+                        "pub type {}<{}: Default> = {};",
+                        ty.name,
+                        ctx.generic_type,
+                        ctx.type_ref_name(&alias.ty, true)
+                    )?;
+                } else {
+                    writeln!(
+                        w,
+                        "pub type {}<{}> = {};",
+                        ty.name,
+                        ctx.generic_type,
+                        ctx.type_ref_name(&alias.ty, true)
+                    )?;
+                }
             } else {
                 writeln!(
                     w,
@@ -159,9 +175,16 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
             }
         }
         TypeKind::Struct(s) => {
-            writeln!(w, "#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]")?;
-            if ctx.deps.has_path(&ty.name, &ctx.generic_type) {
-                writeln!(w, "pub struct {}<{}> {{", ty.name, &ctx.generic_type)?;
+            writeln!(
+                w,
+                "#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]"
+            )?;
+            if generic_needed {
+                if default_needed {
+                    writeln!(w, "pub struct {}<{}: Default> {{", ty.name, &ctx.generic_type)?;
+                } else {
+                    writeln!(w, "pub struct {}<{}> {{", ty.name, &ctx.generic_type)?;
+                }
             } else {
                 writeln!(w, "pub struct {} {{", ty.name)?;
             }
@@ -210,11 +233,15 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
                 }
                 EnumTag::Untagged => {
                     writeln!(w, "#[serde(untagged)]")?;
-                }
+                    }
             }
 
-            if ctx.deps.has_path(&ty.name, &ctx.generic_type) {
-                writeln!(w, "pub enum {}<{}> {{", ty.name, ctx.generic_type)?;
+            if generic_needed {
+                if default_needed {
+                    writeln!(w, "pub enum {}<{}: Default> {{", ty.name, &ctx.generic_type)?;
+                } else {
+                    writeln!(w, "pub enum {}<{}> {{", ty.name, &ctx.generic_type)?;
+                }
             } else {
                 writeln!(w, "pub enum {} {{", ty.name)?;
             }
@@ -233,11 +260,7 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
                 }
                 if let Some(inner) = &variant.ty {
                     let ty_name = ctx.type_ref_name(inner, true).into_owned();
-                    let variant_type = if ctx.deps.has_path(&ty_name, &ctx.generic_type) {
-                        format!("{}<{}>", ty_name, ctx.generic_type)
-                    } else {
-                        ty_name
-                    };
+                    let variant_type = ty_name;
                     writeln!(w, "    {}({}),", variant.name, variant_type)?;
                 } else {
                     writeln!(w, "    {},", variant.name)?;
@@ -282,6 +305,9 @@ fn gen_method(
     if ctx.config.generation.result_types {
         let mut ident = ident_base.to_case(Case::Pascal);
         ident.push_str("Result");
+
+        let generic_needed = ctx.deps.has_path(&ident, &ctx.generic_type);
+
         if let Some(ref result) = method.result {
             if let Some(ref doc) = result.documentation {
                 writeln!(w, "/// {doc}")?;
@@ -310,15 +336,22 @@ fn gen_method(
         let mut ident = ident_base.to_case(Case::Pascal);
         ident.push_str("Params");
 
-        writeln!(w, "/// Parameters of the `{}` method.", method.name)?;
-        writeln!(w, "#[derive(Debug, Clone)]")?;
+        let generic_needed = ctx.deps.has_path(&ident, &ctx.generic_type);
+        let default_needed = ctx.deps.has_path(&ident, &ctx.default_required_marker);
 
-        if ctx.deps.has_path(&ident, &ctx.generic_type) {
-            writeln!(w, "pub struct {}<{}> {{", ident, &ctx.generic_type)?;
+        writeln!(w, "/// Parameters of the `{}` method.", method.name)?;
+        writeln!(w, "#[derive(Clone, Debug, Eq, PartialEq)]")?;
+
+        if generic_needed {
+            if default_needed {
+                writeln!(w, "pub struct {}<{}: Default> {{", ident, &ctx.generic_type)?;
+            } else {
+                writeln!(w, "pub struct {}<{}> {{", ident, &ctx.generic_type)?;
+            }
         } else {
             writeln!(w, "pub struct {} {{", ident)?;
         }
-        
+
         for param in &method.params {
             if let Some(ref doc) = param.documentation {
                 writeln!(w, "    /// {doc}")?;
@@ -329,7 +362,16 @@ fn gen_method(
         writeln!(w, "}}")?;
         writeln!(w)?;
 
-        writeln!(w, "impl Serialize for {ident} {{")?;
+        if generic_needed {
+            if default_needed {
+                writeln!(w, "impl<{}: Default + Serialize> Serialize for {ident}<{}> {{", &ctx.generic_type, &ctx.generic_type)?;
+            } else {
+                writeln!(w, "impl<{}: Serialize> Serialize for {ident}<{}> {{", &ctx.generic_type, &ctx.generic_type)?;
+            }
+        } else {
+            writeln!(w, "impl Serialize for {ident} {{")?;
+        }
+
         writeln!(w, "        #[allow(unused_mut)]")?;
         writeln!(
             w,
@@ -364,7 +406,23 @@ fn gen_method(
         writeln!(w, "}}")?;
         writeln!(w)?;
 
-        writeln!(w, "impl<'de> Deserialize<'de> for {ident} {{")?;
+        if generic_needed {
+            if default_needed {
+                writeln!(
+                    w,
+                    "impl<'de, {}: Default + Deserialize<'de>> Deserialize<'de> for {ident}<{}> {{",
+                    &ctx.generic_type, &ctx.generic_type)?;
+            } else {
+                writeln!(
+                    w,
+                    "impl<'de, {}: Deserialize<'de>> Deserialize<'de> for {ident}<{}> {{",
+                    &ctx.generic_type, &ctx.generic_type)?;
+            }
+
+        } else {
+            writeln!(w, "impl<'de> Deserialize<'de> for {ident} {{")?;
+        }
+
         writeln!(
             w,
             "    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>"
@@ -373,13 +431,36 @@ fn gen_method(
         writeln!(w, "        D: serde::Deserializer<'de>,")?;
         writeln!(w, "    {{")?;
 
-        writeln!(w, "        struct Visitor;")?;
+        if generic_needed {
+            writeln!(w, "        struct Visitor<{}> {{", &ctx.generic_type)?;
+            writeln!(w, "            marker: PhantomData<F>,")?;
+            writeln!(w, "        }}")?;
+        } else {
+            writeln!(w, "        struct Visitor;")?;
+        }
+
         writeln!(w)?;
-        writeln!(
-            w,
-            "        impl<'de> serde::de::Visitor<'de> for Visitor {{"
-        )?;
-        writeln!(w, "            type Value = {ident};",)?;
+        if generic_needed {
+            if default_needed {
+                writeln!(
+                    w,
+                    "impl<'de, {}: Default + Deserialize<'de>> serde::de::Visitor<'de> for Visitor<{}> {{", &ctx.generic_type, &ctx.generic_type
+                )?;
+            } else {
+                writeln!(
+                    w,
+                    "impl<'de, {}: Deserialize<'de>> serde::de::Visitor<'de> for Visitor<{}> {{", &ctx.generic_type, &ctx.generic_type
+                )?;
+            }
+            writeln!(
+                w,
+                "            type Value = {ident}<{}>;",
+                &ctx.generic_type
+            )?;
+        } else {
+            writeln!(w, "impl<'de> serde::de::Visitor<'de> for Visitor {{")?;
+            writeln!(w, "            type Value = {ident};",)?;
+        };
         writeln!(w)?;
         writeln!(
             w,
@@ -442,7 +523,17 @@ fn gen_method(
             writeln!(w, "                A: serde::de::MapAccess<'de>,")?;
             writeln!(w, "            {{")?;
             writeln!(w, "                #[derive(Deserialize)]")?;
-            writeln!(w, "                struct Helper {{")?;
+
+            if generic_needed {
+                if default_needed {
+                    writeln!(w, "                struct Helper<{}: Default> {{", &ctx.generic_type)?;
+                } else {
+                    writeln!(w, "                struct Helper<{}> {{", &ctx.generic_type)?;
+                }
+            } else {
+               writeln!(w, "                struct Helper {{")?;   
+            }
+            
             for param in &method.params {
                 if !param.required {
                     writeln!(w, "                        #[serde(default)]")?;
@@ -474,16 +565,20 @@ fn gen_method(
         writeln!(w, "        }}")?;
         writeln!(w)?;
 
-        match method.param_structure {
-            ParamStructure::ByName => {
-                writeln!(w, "        deserializer.deserialize_map(Visitor)")?;
-            }
-            ParamStructure::ByPosition => {
-                writeln!(w, "        deserializer.deserialize_seq(Visitor)")?;
-            }
-            ParamStructure::Either => {
-                writeln!(w, "        deserializer.deserialize_any(Visitor)")?;
-            }
+        let deserialize_method = match method.param_structure {
+            ParamStructure::ByName => "deserialize_map",
+            ParamStructure::ByPosition => "deserialize_seq",
+            ParamStructure::Either => "deserialize_any",
+        };
+
+        if generic_needed {
+            writeln!(
+                w,
+                "deserializer.{}(Visitor::<{}> {{ marker: PhantomData }})",
+                deserialize_method, &ctx.generic_type
+            )?;
+        } else {
+            writeln!(w, "deserializer.{}(Visitor)", deserialize_method)?;
         }
 
         writeln!(w, "    }}")?;
