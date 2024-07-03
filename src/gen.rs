@@ -143,7 +143,9 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
     }
 
     let generic_needed = ctx.deps.has_path(&ty.name, &ctx.generic_type);
-    let default_needed = ctx.deps.has_indirect_path(&ty.name, &ctx.default_required_marker);
+    let default_needed = ctx
+        .deps
+        .has_indirect_path(&ty.name, &ctx.default_required_marker);
 
     match &ty.kind {
         TypeKind::Alias(alias) => {
@@ -177,11 +179,15 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
         TypeKind::Struct(s) => {
             writeln!(
                 w,
-                "#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]"
+                "#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]"
             )?;
             if generic_needed {
                 if default_needed {
-                    writeln!(w, "pub struct {}<{}: Default> {{", ty.name, &ctx.generic_type)?;
+                    writeln!(
+                        w,
+                        "pub struct {}<{}: Default> {{",
+                        ty.name, &ctx.generic_type
+                    )?;
                 } else {
                     writeln!(w, "pub struct {}<{}> {{", ty.name, &ctx.generic_type)?;
                 }
@@ -214,10 +220,10 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
             writeln!(w, "}}")?;
         }
         TypeKind::Enum(e) => {
-            writeln!(w, "#[derive(Serialize, Deserialize)]")?;
-            if e.copy {
-                writeln!(w, "#[derive(Copy, PartialEq, Eq, Hash)]")?;
-            }
+            writeln!(w, "#[derive(Eq, Hash, PartialEq, Serialize, Deserialize)]")?;
+            // if e.copy {
+            //     writeln!(w, "#[derive(Copy, Hash)]")?;
+            // }
             for global_derive in &ctx.config.generation.global_derives {
                 writeln!(w, "#[derive({global_derive})]")?;
             }
@@ -233,7 +239,7 @@ fn gen_type(w: &mut dyn io::Write, ctx: &mut Ctx, ty: &TypeDef) -> io::Result<()
                 }
                 EnumTag::Untagged => {
                     writeln!(w, "#[serde(untagged)]")?;
-                    }
+                }
             }
 
             if generic_needed {
@@ -306,8 +312,6 @@ fn gen_method(
         let mut ident = ident_base.to_case(Case::Pascal);
         ident.push_str("Result");
 
-        let generic_needed = ctx.deps.has_path(&ident, &ctx.generic_type);
-
         if let Some(ref result) = method.result {
             if let Some(ref doc) = result.documentation {
                 writeln!(w, "/// {doc}")?;
@@ -337,7 +341,9 @@ fn gen_method(
         ident.push_str("Params");
 
         let generic_needed = ctx.deps.has_path(&ident, &ctx.generic_type);
-        let default_needed = ctx.deps.has_path(&ident, &ctx.default_required_marker);
+        let default_needed = ctx
+            .deps
+            .has_indirect_path(&ident, &ctx.default_required_marker);
 
         writeln!(w, "/// Parameters of the `{}` method.", method.name)?;
         writeln!(w, "#[derive(Clone, Debug, Eq, PartialEq)]")?;
@@ -364,9 +370,17 @@ fn gen_method(
 
         if generic_needed {
             if default_needed {
-                writeln!(w, "impl<{}: Default + Serialize> Serialize for {ident}<{}> {{", &ctx.generic_type, &ctx.generic_type)?;
+                writeln!(
+                    w,
+                    "impl<{}: Default + Serialize> Serialize for {ident}<{}> {{",
+                    &ctx.generic_type, &ctx.generic_type
+                )?;
             } else {
-                writeln!(w, "impl<{}: Serialize> Serialize for {ident}<{}> {{", &ctx.generic_type, &ctx.generic_type)?;
+                writeln!(
+                    w,
+                    "impl<{}: Serialize> Serialize for {ident}<{}> {{",
+                    &ctx.generic_type, &ctx.generic_type
+                )?;
             }
         } else {
             writeln!(w, "impl Serialize for {ident} {{")?;
@@ -411,14 +425,15 @@ fn gen_method(
                 writeln!(
                     w,
                     "impl<'de, {}: Default + Deserialize<'de>> Deserialize<'de> for {ident}<{}> {{",
-                    &ctx.generic_type, &ctx.generic_type)?;
+                    &ctx.generic_type, &ctx.generic_type
+                )?;
             } else {
                 writeln!(
                     w,
                     "impl<'de, {}: Deserialize<'de>> Deserialize<'de> for {ident}<{}> {{",
-                    &ctx.generic_type, &ctx.generic_type)?;
+                    &ctx.generic_type, &ctx.generic_type
+                )?;
             }
-
         } else {
             writeln!(w, "impl<'de> Deserialize<'de> for {ident} {{")?;
         }
@@ -449,7 +464,8 @@ fn gen_method(
             } else {
                 writeln!(
                     w,
-                    "impl<'de, {}: Deserialize<'de>> serde::de::Visitor<'de> for Visitor<{}> {{", &ctx.generic_type, &ctx.generic_type
+                    "impl<'de, {}: Deserialize<'de>> serde::de::Visitor<'de> for Visitor<{}> {{",
+                    &ctx.generic_type, &ctx.generic_type
                 )?;
             }
             writeln!(
@@ -526,14 +542,18 @@ fn gen_method(
 
             if generic_needed {
                 if default_needed {
-                    writeln!(w, "                struct Helper<{}: Default> {{", &ctx.generic_type)?;
+                    writeln!(
+                        w,
+                        "                struct Helper<{}: Default> {{",
+                        &ctx.generic_type
+                    )?;
                 } else {
                     writeln!(w, "                struct Helper<{}> {{", &ctx.generic_type)?;
                 }
             } else {
-               writeln!(w, "                struct Helper {{")?;   
+                writeln!(w, "                struct Helper {{")?;
             }
-            
+
             for param in &method.params {
                 if !param.required {
                     writeln!(w, "                        #[serde(default)]")?;

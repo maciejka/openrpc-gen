@@ -1,10 +1,10 @@
 use convert_case::{Case, Casing};
-use petgraph::{algo, Direction};
+use petgraph::algo::has_path_connecting;
 use petgraph::graph::{DiGraph, NodeIndex};
+use petgraph::visit::EdgeRef;
+use petgraph::{algo, Direction};
 use std::collections::hash_map::Keys;
 use std::collections::HashMap;
-use petgraph::algo::has_path_connecting;
-use petgraph::visit::EdgeRef;
 
 use crate::parse::{TypeKind, TypeRef};
 
@@ -61,10 +61,19 @@ impl TypeDeps {
 
         for ty in file.types.values() {
             match &ty.kind {
-                TypeKind::Alias(alias) => add_dep(self, file, config, ty.name.clone(), &alias.ty, true),
+                TypeKind::Alias(alias) => {
+                    add_dep(self, file, config, ty.name.clone(), &alias.ty, true)
+                }
                 TypeKind::Struct(s) => {
                     for field in s.fields.values() {
-                        add_dep(self, file, config, ty.name.clone(), &&field.ty, field.required);
+                        add_dep(
+                            self,
+                            file,
+                            config,
+                            ty.name.clone(),
+                            &&field.ty,
+                            field.required,
+                        );
                     }
                 }
                 TypeKind::Enum(e) => {
@@ -99,10 +108,6 @@ impl TypeDeps {
         }
     }
 
-    pub(crate) fn get_nodes(&self) -> Keys<String, NodeIndex<u32>> {
-        self.nodes.keys()
-    }
-
     pub(crate) fn has_path(&self, a: &String, b: &String) -> bool {
         if a == b {
             return false;
@@ -122,7 +127,9 @@ impl TypeDeps {
         let a = self.nodes.get(a).unwrap();
         let b = self.nodes.get(b).unwrap();
 
-        algo::all_simple_paths::<Vec<_>, _>(&self.g, *a, *b, 1, None).next().is_some()
+        algo::all_simple_paths::<Vec<_>, _>(&self.g, *a, *b, 1, None)
+            .next()
+            .is_some()
     }
 
     pub(crate) fn add_edge(&mut self, a: String, b: String) {
@@ -136,19 +143,21 @@ impl TypeDeps {
         let f = self.get_node(&String::from("F"));
         let d = self.get_node(&format!("{}_ImplicitDefault", "F"));
         let optional = self.get_node(&String::from("_Optional"));
-        let edges =
-            self.g.edges_directed(maybe_implicit_default, Direction::Incoming)
-                .filter(|e| {
-                    self.g
-                        .edges(e.source())
-                        .filter(|e|
-                            self.g.contains_edge(e.target(), optional) &&
-                                has_path_connecting(&self.g, e.target(), f, None) &&
-                                e.target() != f
-                        ).count() > 0
-                })
-                .map(|e| e.source())
-                .collect::<Vec<_>>();
+        let edges = self
+            .g
+            .edges_directed(maybe_implicit_default, Direction::Incoming)
+            .filter(|e| {
+                self.g
+                    .edges(e.source())
+                    .filter(|e| {
+                        self.g.contains_edge(e.target(), optional)
+                            && has_path_connecting(&self.g, e.target(), f, None)
+                    })
+                    .count()
+                    > 0
+            })
+            .map(|e| e.source())
+            .collect::<Vec<_>>();
         for e in edges {
             self.g.add_edge(e, d, ());
         }
@@ -166,12 +175,16 @@ impl TypeDeps {
     }
 
     pub(crate) fn debug(&mut self, a: &String, b: &String) {
-        let a = self.get_node(a);
-        let b = self.get_node(b);
-        let ways = algo::all_simple_paths::<Vec<_>, _>(
-            &self.g, a, b, 0, None)
+        let a_node = self.get_node(a);
+        let b_node = self.get_node(b);
+        let ways = algo::all_simple_paths::<Vec<_>, _>(&self.g, a_node, b_node, 0, None)
             .collect::<Vec<_>>();
-        println!("---------------->");
+
+        if ways.is_empty() {
+            println!("No {a} -> {b} path found");
+            return;
+        }
+        println!("{a} -> {b} path:");
         for n in ways.first().unwrap() {
             println!("{:?}", self.g.node_weight(*n));
         }

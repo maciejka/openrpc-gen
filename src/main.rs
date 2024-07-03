@@ -39,10 +39,16 @@ fn main() -> Result<(), String> {
     deps.add_edge(String::from("BlockId"), String::from("F"));
 
     deps.add_edge(String::from("BroadcastedInvokeTxn"), String::from("F"));
-    deps.add_edge(String::from("BroadcastedInvokeTxn"), String::from("F_ImplicitDefault"));
+    deps.add_edge(
+        String::from("BroadcastedInvokeTxn"),
+        String::from("F_ImplicitDefault"),
+    );
 
     deps.add_edge(String::from("BroadcastedDeclareTxn"), String::from("F"));
-    deps.add_edge(String::from("BroadcastedDeclareTxn"), String::from("F_ImplicitDefault"));
+    deps.add_edge(
+        String::from("BroadcastedDeclareTxn"),
+        String::from("F_ImplicitDefault"),
+    );
 
     deps.add_edge(
         String::from("BroadcastedDeployAccountTxn"),
@@ -51,19 +57,12 @@ fn main() -> Result<(), String> {
 
     deps.fix_defaults();
 
-    // deps.print_graph();
-    deps.debug(&String::from("InvokeTransactionTrace"), &String::from("F_ImplicitDefault"));
-    println!("has indirect: {}", deps.has_indirect_path(&String::from("InvokeTransactionTrace"), &String::from("F_ImplicitDefault")));
-
-    deps.debug(&String::from("DeclareTransactionTrace"), &String::from("F_ImplicitDefault"));
-
-    // deps.debug(&String::from("ContractClass"), &String::from("_MaybeImplicitDefault"));
-    // deps.debug(&String::from("ContractClass"), &String::from("_Optional"));
-
-    // deps.debug(&String::from("FunctionInvocation"), &String::from("_Default"));
-    // deps.debug(&String::from("F"), &String::from("F_ImplicitDefault"));
-
-    generate(&rpc_document, &rpc_config, &deps, PathBuf::from("./starknet_api_openrpc.rs"))?;
+    generate(
+        &rpc_document,
+        &rpc_config,
+        &deps,
+        PathBuf::from("./starknet_api_openrpc.rs"),
+    )?;
     generate(
         &trace_document,
         &trace_config,
